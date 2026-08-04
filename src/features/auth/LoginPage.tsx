@@ -7,7 +7,7 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 px-6">
       <div className="w-full max-w-sm text-center">
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">Auditoría de Grasa Dorsal</h1>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">Auditoría HGP7</h1>
         <p className="text-slate-500 mb-8">
           Ingresa con tu cuenta corporativa de Microsoft 365 para continuar.
         </p>

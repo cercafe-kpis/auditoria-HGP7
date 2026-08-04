@@ -37,12 +37,19 @@ async function getAllItems<TFields>(
   let path = `/sites/${siteId}/lists/${listId}/items?expand=fields&$top=200${filterQs}`;
   const items: SpListItem<TFields>[] = [];
 
+  // Graph exige este header cuando se usa $filter sobre columnas de una
+  // Lista de SharePoint que no están indizadas — sin él responde
+  // 400 Bad Request en vez de ejecutar la consulta.
+  const init = filter
+    ? { headers: { Prefer: 'HonorNonIndexedQueriesWarningMayFailRandomly' } }
+    : undefined;
+
   // Sigue la paginación de Graph (@odata.nextLink) hasta traer todo.
   // Para catálogos (plantas, metodologías, operarios, usuarios) el volumen
   // es pequeño; para Auditorías, las pantallas de reporte deben pasar
   // siempre un filtro de fecha/planta para no traer el histórico completo.
   while (path) {
-    const res: SpListResponse<TFields> = await graph.fetch(path, token);
+    const res: SpListResponse<TFields> = await graph.fetch(path, token, init);
     items.push(...res.value);
     path = res['@odata.nextLink'] ?? '';
   }

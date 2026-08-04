@@ -165,6 +165,63 @@ interface UsuarioFields {
   Activo: boolean;
 }
 
+export async function getUsuarios(token: string): Promise<UsuarioApp[]> {
+  const items = await getAllItems<UsuarioFields>(token, appConfig.listas.usuarios);
+  return items.map((i) => ({
+    id: i.id,
+    correo: i.fields.Correo,
+    nombre: i.fields.Title,
+    rol: i.fields.Rol,
+    plantasAsignadas: i.fields.PlantasAsignadasLookupId ?? [],
+    activo: i.fields.Activo,
+  }));
+}
+
+export interface NuevoUsuarioInput {
+  nombre: string;
+  correo: string;
+  rol: Rol;
+  plantasAsignadas: string[]; // ids de Planta (puede ir vacío = sin restricción)
+  activo: boolean;
+}
+
+/**
+ * Crea un Usuario (asigna su rol). El correo debe coincidir EXACTAMENTE
+ * con el UPN de la cuenta de Microsoft 365 de la persona — es la clave que
+ * useCurrentUser() usa para resolver el rol al iniciar sesión.
+ */
+export async function crearUsuario(
+  token: string,
+  input: NuevoUsuarioInput,
+): Promise<UsuarioApp> {
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.usuarios);
+  const fields: Record<string, unknown> = {
+    Title: input.nombre,
+    Correo: input.correo,
+    Rol: input.rol,
+    Activo: input.activo,
+  };
+  // Columna de búsqueda multivalor: Graph exige declarar el tipo OData de
+  // la colección y que los ids vengan como enteros (no como string).
+  if (input.plantasAsignadas.length > 0) {
+    fields['PlantasAsignadasLookupId@odata.type'] = 'Collection(Edm.Int32)';
+    fields.PlantasAsignadasLookupId = input.plantasAsignadas.map((id) => Number(id));
+  }
+  const created: SpListItem<UsuarioFields> = await graph.fetch(
+    `/sites/${siteId}/lists/${listId}/items`,
+    token,
+    { method: 'POST', body: JSON.stringify({ fields }) },
+  );
+  return {
+    id: created.id,
+    correo: created.fields.Correo,
+    nombre: created.fields.Title,
+    rol: created.fields.Rol,
+    plantasAsignadas: created.fields.PlantasAsignadasLookupId ?? [],
+    activo: created.fields.Activo,
+  };
+}
+
 export async function getUsuarioPorCorreo(
   token: string,
   correo: string,

@@ -3,6 +3,7 @@ import { AuthenticatedTemplate, UnauthenticatedTemplate } from '@azure/msal-reac
 import { LoginPage } from '../features/auth/LoginPage';
 import { MisAuditoriasPage } from '../features/auditoria/MisAuditoriasPage';
 import { PlantasAdmin } from '../features/catalogos/PlantasAdmin';
+import { UsuariosAdmin } from '../features/catalogos/UsuariosAdmin';
 import { IndicadoresPage } from '../features/indicadores/IndicadoresPage';
 import { RoleGuard } from '../components/RoleGuard';
 import { useCurrentUser } from '../features/auth/useCurrentUser';
@@ -45,6 +46,11 @@ function AppShell() {
             Plantas
           </Link>
         )}
+        {usuario?.rol === 'Administrador' && (
+          <Link to="/admin/usuarios" className="text-slate-700 whitespace-nowrap">
+            Usuarios
+          </Link>
+        )}
         <span className="ml-auto text-slate-400 whitespace-nowrap">{usuario?.rol ?? '…'}</span>
       </nav>
 
@@ -70,6 +76,14 @@ function AppShell() {
           element={
             <RoleGuard permitido={['Administrador']}>
               <PlantasAdmin />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin/usuarios"
+          element={
+            <RoleGuard permitido={['Administrador']}>
+              <UsuariosAdmin />
             </RoleGuard>
           }
         />

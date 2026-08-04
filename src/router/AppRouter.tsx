@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
-import { AuthenticatedTemplate, UnauthenticatedTemplate } from '@azure/msal-react';
+import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from '@azure/msal-react';
 import { LoginPage } from '../features/auth/LoginPage';
 import { MisAuditoriasPage } from '../features/auditoria/MisAuditoriasPage';
 import { PlantasAdmin } from '../features/catalogos/PlantasAdmin';
@@ -31,6 +31,15 @@ export function AppRouter() {
 
 function AppShell() {
   const { usuario } = useCurrentUser();
+  const { instance } = useMsal();
+
+  function cerrarSesion() {
+    // logoutRedirect limpia la cuenta activa y la caché de MSAL, y luego
+    // regresa a postLogoutRedirectUri (configurado en msalConfig.ts como
+    // la misma redirectUri de la app), donde UnauthenticatedTemplate
+    // vuelve a mostrar el LoginPage.
+    void instance.logoutRedirect();
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -64,6 +73,13 @@ function AppShell() {
           </Link>
         )}
         <span className="ml-auto text-slate-400 whitespace-nowrap">{usuario?.rol ?? '…'}</span>
+        <button
+          type="button"
+          onClick={cerrarSesion}
+          className="text-slate-500 whitespace-nowrap font-semibold"
+        >
+          Cerrar sesión
+        </button>
       </nav>
 
       <Routes>

@@ -1,0 +1,70 @@
+erDiagram
+    USUARIOS ||--o{ AUDITORIAS : "registra (rol auditor)"
+    USUARIOS {
+        string Correo "PK logico - debe igualar UPN de Entra ID"
+        string Nombre
+        choice Rol "Administrador|Auditor|Consulta"
+        lookup_multi PlantasAsignadas
+        yesno Activo
+    }
+
+    PLANTAS ||--o{ OPERARIOS : "emplea"
+    PLANTAS ||--o{ AUDITORIAS : "ubica"
+    PLANTAS {
+        string Titulo "nombre"
+        string Codigo
+        string Ciudad
+        yesno Activa
+    }
+
+    OPERARIOS ||--o{ AUDITORIAS : "es evaluado en"
+    OPERARIOS {
+        string Titulo "nombre"
+        string Documento
+        lookup Planta
+        string Cargo
+        yesno Activo
+    }
+
+    METODOLOGIAS ||--o{ AUDITORIAS : "aplica"
+    METODOLOGIAS {
+        string Titulo "nombre"
+        string Version
+        text Descripcion
+        yesno Activa
+    }
+
+    AUDITORIAS ||--o{ EVIDENCIAS : "adjunta"
+    AUDITORIAS {
+        string Titulo "IdCliente = UUID generado en el dispositivo"
+        date FechaAuditoria
+        lookup Planta
+        lookup Metodologia
+        person Auditor
+        lookup Operario
+        string NumeroTiquete
+        yesno InclinacionHerramienta
+        yesno TieneMarca
+        yesno MarcaIntercostalCorrecta
+        choice Clasificacion "Bueno|Regular|Malo|Insuficiente"
+        yesno CanalGrasosa
+        choice EstadoSync "Pendiente|Sincronizada"
+        datetime CapturadaEn
+        datetime RecibidaEn
+    }
+
+    EVIDENCIAS {
+        file Archivo "biblioteca de documentos"
+        lookup AuditoriaId
+        number Orden
+        datetime TomadaEn
+    }
+
+    AUDITORIAS ||--o{ AUDITORIA_LOG : "genera"
+    AUDITORIA_LOG {
+        lookup AuditoriaId
+        person Usuario
+        string Accion
+        text DetalleJSON
+        datetime CreadoEn
+    }

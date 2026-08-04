@@ -1,0 +1,35 @@
+flowchart TB
+    subgraph CLIENTE["Dispositivos en planta"]
+        MOBILE["📱 PWA en celular/tablet<br/>(Auditor en línea de producción)"]
+        DESKTOP["💻 Navegador de escritorio<br/>(Administración / Consulta)"]
+    end
+
+    subgraph HOSTING["Hosting estático (gratuito)"]
+        GHP["GitHub Pages<br/>Build de React+Vite (PWA)<br/>+ GitHub Actions (CI/CD)"]
+    end
+
+    subgraph AUTH["Identidad"]
+        AAD["Microsoft Entra ID (Azure AD)<br/>App registration SPA + MSAL.js<br/>Cuentas corporativas M365"]
+    end
+
+    subgraph M365["Microsoft 365 (ya licenciado)"]
+        GRAPH["Microsoft Graph API<br/>(permiso Sites.Selected)"]
+        SPLISTS[("Listas de SharePoint<br/>Plantas · Metodologías · Operarios<br/>Usuarios(roles) · Auditorías · Bitácora")]
+        SPDOCS[("Biblioteca de documentos<br/>Evidencias fotográficas")]
+    end
+
+    MOBILE -- "HTTPS (estático)" --> GHP
+    DESKTOP -- "HTTPS (estático)" --> GHP
+    GHP -. "IndexedDB local<br/>(cola offline)" .-> MOBILE
+
+    MOBILE -- "1. Login (MSAL.js, PKCE)" --> AAD
+    DESKTOP -- "1. Login (MSAL.js, PKCE)" --> AAD
+    AAD -- "token delegado" --> MOBILE
+    AAD -- "token delegado" --> DESKTOP
+
+    MOBILE -- "2. CRUD vía token Bearer" --> GRAPH
+    DESKTOP -- "2. CRUD vía token Bearer" --> GRAPH
+    GRAPH --> SPLISTS
+    GRAPH --> SPDOCS
+
+    MOBILE -- "3. Subida de foto (batch/sesión de carga)" --> SPDOCS

@@ -1,0 +1,34 @@
+sequenceDiagram
+    actor Auditor
+    participant PWA as PWA (React)
+    participant IDB as IndexedDB local
+    participant SW as Service Worker
+    participant MSAL as MSAL.js (caché de token)
+    participant GRAPH as Microsoft Graph API
+    participant SP as SharePoint (Listas + Documentos)
+
+    Auditor->>PWA: Diligencia formulario + toma foto
+    PWA->>PWA: Valida campos obligatorios (Zod)
+    PWA->>IDB: Guarda auditoría + foto (Blob) con UUID local
+    PWA-->>Auditor: "Guardada localmente ✔ pendiente de sincronizar"
+
+    alt Sin conexión
+        Note over PWA,SW: Queda en cola. No se intenta renovar token.<br/>Badge muestra pendientes.
+    else Con conexión disponible
+        SW->>IDB: Lee cola de pendientes
+        SW->>MSAL: Solicita token silencioso (o login si expiró)
+        MSAL-->>SW: Access token (Graph)
+        SW->>GRAPH: PUT foto a Biblioteca "Evidencias" (upload session)
+        GRAPH->>SP: Guarda archivo + metadata
+        SP-->>GRAPH: 201 Created (item id)
+        SW->>GRAPH: POST item en Lista "Auditorías" ($batch, con IdCliente=UUID)
+        GRAPH->>SP: Verifica si ya existe item con ese IdCliente
+        alt No existe (primer intento)
+            SP-->>GRAPH: Crea item
+        else Ya existe (reintento)
+            SP-->>GRAPH: Ignora duplicado, devuelve item existente
+        end
+        GRAPH-->>SW: 201/200 OK
+        SW->>IDB: Marca registro como sincronizado y lo limpia
+        SW-->>PWA: Actualiza badge de pendientes
+    end

@@ -15,7 +15,7 @@ interface FotoCapturada {
   nombreArchivo: string;
 }
 
-const PASOS = ['Información general', 'Evaluación', 'Evidencia', 'Revisión'] as const;
+const PASOS = ['Información general', 'Evaluación y evidencia', 'Revisión'] as const;
 
 function nuevoUuid(): string {
   return crypto.randomUUID();
@@ -65,24 +65,20 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
       if (!plantaId) faltan.push('Planta');
       if (!metodologiaId) faltan.push('Metodología');
       if (!operarioId) faltan.push('Operario');
-      if (!numeroTiquete.trim()) faltan.push('Número de tiquete');
+      if (inclinacionHerramienta === null) faltan.push('Inclinación de la herramienta');
       setErrores(faltan);
       return faltan.length === 0;
     }
     if (paso === 1) {
       const faltan: string[] = [];
-      if (inclinacionHerramienta === null) faltan.push('Inclinación de la herramienta');
+      if (!numeroTiquete.trim()) faltan.push('Número de tiquete');
       if (tieneMarca === null) faltan.push('¿Tiene marca?');
       if (marcaIntercostalCorrecta === null) faltan.push('¿Marca intercostal correcta?');
       if (!clasificacion) faltan.push('Clasificación');
       if (canalGrasosa === null) faltan.push('¿Canal grasosa?');
+      if (fotos.length === 0) faltan.push('Debes adjuntar al menos una fotografía');
       setErrores(faltan);
       return faltan.length === 0;
-    }
-    if (paso === 2) {
-      const ok = fotos.length > 0;
-      setErrores(ok ? [] : ['Debes adjuntar al menos una fotografía']);
-      return ok;
     }
     return true;
   }
@@ -219,6 +215,15 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
             </select>
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Auditor</label>
+            <input
+              type="text"
+              value={usuario?.nombre ?? auditorCorreo}
+              readOnly
+              className="w-full h-12 rounded-lg border border-slate-300 px-3 bg-slate-100 text-slate-600"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Operario</label>
             <select
               value={operarioId}
@@ -234,7 +239,17 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
               ))}
             </select>
           </div>
-          <div>
+          <SegmentedYesNo
+            label="Inclinación de la herramienta correcta"
+            value={inclinacionHerramienta}
+            onChange={setInclinacionHerramienta}
+          />
+        </div>
+      )}
+
+      {paso === 1 && (
+        <div>
+          <div className="mb-4">
             <label className="block text-sm font-medium text-slate-700 mb-1">Número de tiquete</label>
             <input
               type="text"
@@ -245,16 +260,6 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
               placeholder="Ej. 10234"
             />
           </div>
-        </div>
-      )}
-
-      {paso === 1 && (
-        <div>
-          <SegmentedYesNo
-            label="Inclinación de la herramienta"
-            value={inclinacionHerramienta}
-            onChange={setInclinacionHerramienta}
-          />
           <SegmentedYesNo label="¿Tiene marca?" value={tieneMarca} onChange={setTieneMarca} />
           <SegmentedYesNo
             label="¿La marca intercostal es correcta?"
@@ -263,19 +268,22 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
           />
           <ClassificationPicker value={clasificacion} onChange={setClasificacion} />
           <SegmentedYesNo label="¿La canal está grasosa?" value={canalGrasosa} onChange={setCanalGrasosa} />
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Evidencia fotográfica</label>
+            <CameraCapture fotos={fotos} onFotosChange={setFotos} />
+          </div>
         </div>
       )}
 
-      {paso === 2 && <CameraCapture fotos={fotos} onFotosChange={setFotos} />}
-
-      {paso === 3 && (
+      {paso === 2 && (
         <div className="space-y-2 text-sm">
           <ResumenFila etiqueta="Fecha" valor={fechaAuditoria} />
           <ResumenFila etiqueta="Planta" valor={plantas.find((p) => p.id === plantaId)?.nombre ?? '—'} />
           <ResumenFila etiqueta="Metodología" valor={metodologias.find((m) => m.id === metodologiaId)?.nombre ?? '—'} />
+          <ResumenFila etiqueta="Auditor" valor={usuario?.nombre ?? auditorCorreo} />
           <ResumenFila etiqueta="Operario" valor={operarios.find((o) => o.id === operarioId)?.nombre ?? '—'} />
+          <ResumenFila etiqueta="Inclinación herramienta correcta" valor={inclinacionHerramienta ? 'Sí' : 'No'} />
           <ResumenFila etiqueta="Tiquete" valor={numeroTiquete} />
-          <ResumenFila etiqueta="Inclinación herramienta" valor={inclinacionHerramienta ? 'Sí' : 'No'} />
           <ResumenFila etiqueta="Tiene marca" valor={tieneMarca ? 'Sí' : 'No'} />
           <ResumenFila etiqueta="Marca intercostal correcta" valor={marcaIntercostalCorrecta ? 'Sí' : 'No'} />
           <ResumenFila etiqueta="Clasificación" valor={clasificacion ?? '—'} />

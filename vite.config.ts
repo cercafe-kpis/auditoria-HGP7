@@ -17,8 +17,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Auditoría de Grasa Dorsal',
-        short_name: 'AuditGrasa',
+        name: 'Auditoría HGP7',
+        short_name: 'Auditoría HGP7',
         description: 'Auditoría de medición de grasa dorsal en canales de cerdo',
         theme_color: '#2563eb',
         background_color: '#f8fafc',

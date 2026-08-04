@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useCatalogosOffline } from './useCatalogosOffline';
 import { useAuthToken } from '../../auth/useAuthToken';
 import { crearOperario, editarOperario } from '../../graph/lists';
@@ -20,16 +20,18 @@ type OperarioForm = z.infer<typeof operarioSchema>;
 const vacio: OperarioForm = { nombre: '', documento: '', plantaId: '', cargo: '', activo: true };
 
 /**
- * Pantalla de administración de Operarios — mismo patrón que
- * PlantasAdmin.tsx / MetodologiasAdmin.tsx, con edición en línea y un
- * desplegable de Planta (columna de búsqueda) tomado del caché offline de
- * plantas activas.
+ * Pantalla de administración de Operarios — crear + editar. Mismo patrón
+ * de aviso "Editando: X" + desplazamiento automático que MetodologiasAdmin
+ * (ver ese archivo para el comentario de referencia).
  */
 export function OperariosAdmin() {
   const { operarios, plantas } = useCatalogosOffline();
   const { getAccessToken } = useAuthToken();
   const [guardando, setGuardando] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const {
     register,
     handleSubmit,
@@ -39,27 +41,36 @@ export function OperariosAdmin() {
 
   function editar(o: Operario) {
     setEditandoId(o.id);
+    setEditandoNombre(o.nombre);
+    setError(null);
     reset({ nombre: o.nombre, documento: o.documento, plantaId: o.plantaId, cargo: o.cargo, activo: o.activo });
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function cancelarEdicion() {
     setEditandoId(null);
+    setEditandoNombre(null);
+    setError(null);
     reset(vacio);
   }
 
   async function onSubmit(values: OperarioForm) {
     setGuardando(true);
+    setError(null);
     try {
       const token = await getAccessToken();
       if (editandoId) {
         await editarOperario(token, editandoId, values);
         await db.operarios.update(editandoId, values);
         setEditandoId(null);
+        setEditandoNombre(null);
       } else {
         const nuevo = await crearOperario(token, values);
         await db.operarios.put(nuevo);
       }
       reset(vacio);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setGuardando(false);
     }
@@ -73,7 +84,18 @@ export function OperariosAdmin() {
     <div className="max-w-2xl mx-auto p-4">
       <h1 className="text-xl font-bold text-slate-800 mb-4">Operarios</h1>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+      {editandoNombre && (
+        <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+          Editando: <span className="font-semibold">{editandoNombre}</span> — modifica los campos y presiona
+          "Guardar cambios".
+        </div>
+      )}
+
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit(onSubmit)}
+        className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 scroll-mt-4"
+      >
         <div>
           <input
             {...register('nombre')}
@@ -113,6 +135,9 @@ export function OperariosAdmin() {
           <input type="checkbox" {...register('activo')} />
           Activo
         </label>
+
+        {error && <p className="sm:col-span-2 text-sm text-rose-600">{error}</p>}
+
         <div className="sm:col-span-2 flex gap-2">
           <button
             type="submit"

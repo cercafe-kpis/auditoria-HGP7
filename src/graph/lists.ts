@@ -134,6 +134,59 @@ export async function getMetodologias(token: string): Promise<Metodologia[]> {
   }));
 }
 
+export interface NuevaMetodologiaInput {
+  nombre: string;
+  version: string;
+  descripcion: string;
+  activa: boolean;
+}
+
+export async function crearMetodologia(
+  token: string,
+  input: NuevaMetodologiaInput,
+): Promise<Metodologia> {
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.metodologias);
+  const created: SpListItem<MetodologiaFields> = await graph.fetch(
+    `/sites/${siteId}/lists/${listId}/items`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Title: input.nombre,
+          Version: input.version,
+          Descripcion: input.descripcion,
+          Activa: input.activa,
+        },
+      }),
+    },
+  );
+  return {
+    id: created.id,
+    nombre: created.fields.Title,
+    version: created.fields.Version,
+    descripcion: created.fields.Descripcion,
+    activa: created.fields.Activa,
+  };
+}
+
+export async function editarMetodologia(
+  token: string,
+  id: string,
+  cambios: Partial<NuevaMetodologiaInput>,
+): Promise<void> {
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.metodologias);
+  const fields: Record<string, unknown> = {};
+  if (cambios.nombre !== undefined) fields.Title = cambios.nombre;
+  if (cambios.version !== undefined) fields.Version = cambios.version;
+  if (cambios.descripcion !== undefined) fields.Descripcion = cambios.descripcion;
+  if (cambios.activa !== undefined) fields.Activa = cambios.activa;
+  await graph.fetch(`/sites/${siteId}/lists/${listId}/items/${id}/fields`, token, {
+    method: 'PATCH',
+    body: JSON.stringify(fields),
+  });
+}
+
 // ---------- Operarios ----------
 interface OperarioFields {
   Title: string;
@@ -154,6 +207,62 @@ export async function getOperarios(token: string, plantaId?: string): Promise<Op
     cargo: i.fields.Cargo,
     activo: i.fields.Activo,
   }));
+}
+
+export interface NuevoOperarioInput {
+  nombre: string;
+  documento: string;
+  plantaId: string;
+  cargo: string;
+  activo: boolean;
+}
+
+export async function crearOperario(token: string, input: NuevoOperarioInput): Promise<Operario> {
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.operarios);
+  const created: SpListItem<OperarioFields> = await graph.fetch(
+    `/sites/${siteId}/lists/${listId}/items`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Title: input.nombre,
+          Documento: input.documento,
+          // Graph exige un entero (no un string) para una columna de
+          // búsqueda de valor único — de lo contrario responde 400.
+          PlantaLookupId: Number(input.plantaId),
+          Cargo: input.cargo,
+          Activo: input.activo,
+        },
+      }),
+    },
+  );
+  return {
+    id: created.id,
+    nombre: created.fields.Title,
+    documento: created.fields.Documento,
+    plantaId: created.fields.PlantaLookupId,
+    cargo: created.fields.Cargo,
+    activo: created.fields.Activo,
+  };
+}
+
+export async function editarOperario(
+  token: string,
+  id: string,
+  cambios: Partial<NuevoOperarioInput>,
+): Promise<void> {
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.operarios);
+  const fields: Record<string, unknown> = {};
+  if (cambios.nombre !== undefined) fields.Title = cambios.nombre;
+  if (cambios.documento !== undefined) fields.Documento = cambios.documento;
+  if (cambios.plantaId !== undefined) fields.PlantaLookupId = Number(cambios.plantaId);
+  if (cambios.cargo !== undefined) fields.Cargo = cambios.cargo;
+  if (cambios.activo !== undefined) fields.Activo = cambios.activo;
+  await graph.fetch(`/sites/${siteId}/lists/${listId}/items/${id}/fields`, token, {
+    method: 'PATCH',
+    body: JSON.stringify(fields),
+  });
 }
 
 // ---------- Usuarios (roles) ----------
@@ -358,10 +467,12 @@ export async function crearAuditoriaIdempotente(
     fields: {
       Title: input.idCliente,
       FechaAuditoria: input.fechaAuditoria,
-      PlantaLookupId: input.plantaId,
-      MetodologiaLookupId: input.metodologiaId,
+      // Graph exige un entero (no un string) para columnas de búsqueda de
+      // valor único — de lo contrario responde 400 Bad Request.
+      PlantaLookupId: Number(input.plantaId),
+      MetodologiaLookupId: Number(input.metodologiaId),
       AuditorCorreo: input.auditorCorreo,
-      OperarioLookupId: input.operarioId,
+      OperarioLookupId: Number(input.operarioId),
       NumeroTiquete: input.numeroTiquete,
       InclinacionHerramienta: input.inclinacionHerramienta,
       TieneMarca: input.tieneMarca,
@@ -415,7 +526,7 @@ async function registrarLogCambio(token: string, entry: AuditoriaLogEntry): Prom
     method: 'POST',
     body: JSON.stringify({
       fields: {
-        AuditoriaIdLookupId: entry.auditoriaId,
+        AuditoriaIdLookupId: Number(entry.auditoriaId),
         UsuarioCorreo: entry.usuarioCorreo,
         Accion: entry.accion,
         DetalleJson: entry.detalleJson,

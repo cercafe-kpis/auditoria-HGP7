@@ -331,6 +331,27 @@ export async function crearUsuario(
   };
 }
 
+export async function editarUsuario(
+  token: string,
+  id: string,
+  cambios: Partial<NuevoUsuarioInput>,
+): Promise<void> {
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.usuarios);
+  const fields: Record<string, unknown> = {};
+  if (cambios.nombre !== undefined) fields.Title = cambios.nombre;
+  if (cambios.correo !== undefined) fields.Correo = cambios.correo;
+  if (cambios.rol !== undefined) fields.Rol = cambios.rol;
+  if (cambios.activo !== undefined) fields.Activo = cambios.activo;
+  if (cambios.plantasAsignadas !== undefined) {
+    fields['PlantasAsignadasLookupId@odata.type'] = 'Collection(Edm.Int32)';
+    fields.PlantasAsignadasLookupId = cambios.plantasAsignadas.map((pid) => Number(pid));
+  }
+  await graph.fetch(`/sites/${siteId}/lists/${listId}/items/${id}/fields`, token, {
+    method: 'PATCH',
+    body: JSON.stringify(fields),
+  });
+}
+
 export async function getUsuarioPorCorreo(
   token: string,
   correo: string,

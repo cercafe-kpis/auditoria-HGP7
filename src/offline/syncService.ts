@@ -1,17 +1,26 @@
 import { db } from './db';
 import { appConfig } from '../config/appConfig';
-import { crearAuditoriaIdempotente, subirEvidencia } from '../graph/lists';
-import type { AuditoriaLocal } from '../types/entities';
+import {
+  crearAuditoriaIdempotente,
+  guardarInclinacionSesion,
+  subirEvidencia,
+} from '../graph/lists';
+import type { AuditoriaLocal, InclinacionLocal } from '../types/entities';
 
 type TokenGetter = () => Promise<string>;
 
 let syncEnCurso = false;
 
 /**
- * Procesa la cola de auditorías pendientes: para cada una, sube primero
- * sus fotos a la biblioteca de Evidencias y luego crea el ítem en la Lista
- * Auditorías de forma idempotente (por IdCliente). Si un paso falla, el
- * registro queda en estado 'error-sync' con backoff antes del próximo
+ * Procesa las dos colas locales — auditorías de canal e inclinación de
+ * herramienta — que son independientes entre sí (ver comentario en
+ * types/entities.ts sobre InclinacionLocal). Para auditorías, primero sube
+ * las fotos a Evidencias y luego crea el ítem en la Lista Auditorías (una
+ * vez, nunca se vuelve a tocar). Para inclinación es un UPSERT: el
+ * agregado de la sesión crece con cada Sí/No, así que cada sincronización
+ * actualiza el mismo ítem con los totales más recientes. Ambas son
+ * idempotentes por IdCliente — nunca duplican el ítem. Si un paso falla,
+ * el registro queda en estado 'error-sync' con backoff antes del próximo
  * reintento — nunca se pierde ni se bloquea el resto de la cola.
  *
  * Se llama: al detectar el evento 'online', periódicamente en segundo
@@ -27,18 +36,33 @@ export async function procesarColaSincronizacion(getAccessToken: TokenGetter): P
   let fallidas = 0;
 
   try {
-    const pendientes = await db.auditoriasPendientes
+    const pendientesAuditorias = await db.auditoriasPendientes
       .where('estado')
       .anyOf(['local-pendiente', 'error-sync'])
       .toArray();
 
-    for (const auditoria of pendientes) {
+    for (const auditoria of pendientesAuditorias) {
       try {
-        await sincronizarUna(auditoria, getAccessToken);
+        await sincronizarUnaAuditoria(auditoria, getAccessToken);
         sincronizadas++;
       } catch (err) {
         fallidas++;
-        await registrarFallo(auditoria, err);
+        await registrarFalloAuditoria(auditoria, err);
+      }
+    }
+
+    const pendientesInclinaciones = await db.inclinacionesPendientes
+      .where('estado')
+      .anyOf(['local-pendiente', 'error-sync'])
+      .toArray();
+
+    for (const inclinacion of pendientesInclinaciones) {
+      try {
+        await sincronizarUnaInclinacion(inclinacion, getAccessToken);
+        sincronizadas++;
+      } catch (err) {
+        fallidas++;
+        await registrarFalloInclinacion(inclinacion, err);
       }
     }
   } finally {
@@ -48,7 +72,7 @@ export async function procesarColaSincronizacion(getAccessToken: TokenGetter): P
   return { sincronizadas, fallidas };
 }
 
-async function sincronizarUna(auditoria: AuditoriaLocal, getAccessToken: TokenGetter) {
+async function sincronizarUnaAuditoria(auditoria: AuditoriaLocal, getAccessToken: TokenGetter) {
   await db.auditoriasPendientes.update(auditoria.idCliente, { estado: 'sincronizando' });
   const token = await getAccessToken();
 
@@ -67,7 +91,6 @@ async function sincronizarUna(auditoria: AuditoriaLocal, getAccessToken: TokenGe
     auditorCorreo: auditoria.auditorCorreo,
     operarioId: auditoria.operarioId,
     numeroTiquete: auditoria.numeroTiquete,
-    inclinacionHerramienta: auditoria.inclinacionHerramienta,
     tieneMarca: auditoria.tieneMarca,
     marcaIntercostalCorrecta: auditoria.marcaIntercostalCorrecta,
     clasificacion: auditoria.clasificacion,
@@ -79,10 +102,42 @@ async function sincronizarUna(auditoria: AuditoriaLocal, getAccessToken: TokenGe
   await db.auditoriasPendientes.delete(auditoria.idCliente);
 }
 
-async function registrarFallo(auditoria: AuditoriaLocal, err: unknown) {
+async function registrarFalloAuditoria(auditoria: AuditoriaLocal, err: unknown) {
   const intentos = (auditoria.intentosSync ?? 0) + 1;
   const mensaje = err instanceof Error ? err.message : String(err);
   await db.auditoriasPendientes.update(auditoria.idCliente, {
+    estado: 'error-sync',
+    intentosSync: intentos,
+    ultimoError: mensaje,
+  });
+}
+
+async function sincronizarUnaInclinacion(inclinacion: InclinacionLocal, getAccessToken: TokenGetter) {
+  await db.inclinacionesPendientes.update(inclinacion.idCliente, { estado: 'sincronizando' });
+  const token = await getAccessToken();
+
+  await guardarInclinacionSesion(token, {
+    idCliente: inclinacion.idCliente,
+    fechaAuditoria: inclinacion.fechaAuditoria,
+    plantaId: inclinacion.plantaId,
+    metodologiaId: inclinacion.metodologiaId,
+    auditorCorreo: inclinacion.auditorCorreo,
+    operarioId: inclinacion.operarioId,
+    canalesRevisadas: inclinacion.canalesRevisadas,
+    canalesCorrectas: inclinacion.canalesCorrectas,
+    capturadaEn: inclinacion.capturadaEn,
+  });
+
+  // A diferencia de las auditorías de canal, este registro NO se borra:
+  // el auditor puede seguir tocando Sí/No en la misma sesión, y cada toque
+  // vuelve a marcarlo 'local-pendiente' para reenviar el total actualizado.
+  await db.inclinacionesPendientes.update(inclinacion.idCliente, { estado: 'sincronizada' });
+}
+
+async function registrarFalloInclinacion(inclinacion: InclinacionLocal, err: unknown) {
+  const intentos = (inclinacion.intentosSync ?? 0) + 1;
+  const mensaje = err instanceof Error ? err.message : String(err);
+  await db.inclinacionesPendientes.update(inclinacion.idCliente, {
     estado: 'error-sync',
     intentosSync: intentos,
     ultimoError: mensaje,

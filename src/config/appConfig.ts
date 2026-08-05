@@ -36,6 +36,7 @@ export const appConfig = {
     auditorias: 'Auditorias',
     auditoriaLog: 'AuditoriaLog',
     inclinacionHerramienta: 'InclinacionHerramienta',
+    indicadoresObservaciones: 'IndicadoresObservaciones',
   },
   offline: {
     // Máximo de auditorías pendientes acumulables antes de advertir al

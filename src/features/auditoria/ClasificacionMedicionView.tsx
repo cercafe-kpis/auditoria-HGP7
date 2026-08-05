@@ -41,20 +41,37 @@ export function ClasificacionMedicionView({
       <h2 className="text-sm font-semibold text-slate-500 mb-2">EN ESTE DISPOSITIVO</h2>
       <div className="space-y-2">
         {(pendientesLocales ?? []).map((a) => (
-          <div key={a.idCliente} className="rounded-lg border border-slate-200 p-3 text-sm flex justify-between">
-            <div>
-              <p className="font-medium text-slate-800">Tiquete {a.numeroTiquete}</p>
-              <p className="text-slate-500">{a.fechaAuditoria}</p>
+          <div key={a.idCliente} className="rounded-lg border border-slate-200 p-3 text-sm">
+            <div className="flex justify-between">
+              <div>
+                <p className="font-medium text-slate-800">Tiquete {a.numeroTiquete}</p>
+                <p className="text-slate-500">{a.fechaAuditoria}</p>
+              </div>
+              {/* Antes 'local-pendiente' y 'sincronizando' se veían idénticos
+                  ("Pendiente" en ambos casos), lo que hacía imposible saber
+                  desde la pantalla si un registro seguía en cola, estaba
+                  subiéndose en ese momento, o ya había fallado y estaba
+                  esperando su próximo reintento — un dato clave para
+                  diagnosticar problemas de sincronización a distancia. */}
+              <span
+                className={
+                  a.estado === 'error-sync'
+                    ? 'text-rose-600 self-center text-xs font-semibold whitespace-nowrap'
+                    : a.estado === 'sincronizando'
+                      ? 'text-blue-600 self-center text-xs font-semibold whitespace-nowrap'
+                      : 'text-amber-600 self-center text-xs font-semibold whitespace-nowrap'
+                }
+              >
+                {a.estado === 'error-sync'
+                  ? 'Reintentando…'
+                  : a.estado === 'sincronizando'
+                    ? 'Sincronizando…'
+                    : 'Pendiente'}
+              </span>
             </div>
-            <span
-              className={
-                a.estado === 'error-sync'
-                  ? 'text-rose-600 self-center text-xs font-semibold'
-                  : 'text-amber-600 self-center text-xs font-semibold'
-              }
-            >
-              {a.estado === 'error-sync' ? 'Reintentando…' : 'Pendiente'}
-            </span>
+            {a.estado === 'error-sync' && a.ultimoError && (
+              <p className="mt-1 text-xs text-rose-500">{a.ultimoError}</p>
+            )}
           </div>
         ))}
         {(pendientesLocales ?? []).length === 0 && (

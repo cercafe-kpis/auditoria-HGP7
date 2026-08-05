@@ -25,7 +25,7 @@ export function PendingSyncBadge() {
       </span>
       {online && pendientes > 0 && (
         <button
-          onClick={() => void sincronizarAhora()}
+          onClick={() => void sincronizarAhora(true)}
           disabled={sincronizando}
           className="underline underline-offset-2"
         >

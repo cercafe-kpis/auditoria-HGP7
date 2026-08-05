@@ -88,10 +88,6 @@ export function CameraCapture({
 
       {comprimiendo && <p className="text-sm text-slate-500 mb-2">Optimizando foto…</p>}
 
-      {fotos.length === 0 && !comprimiendo && (
-        <p className="text-sm text-rose-600">Se requiere al menos una fotografía.</p>
-      )}
-
       <div className="grid grid-cols-3 gap-2">
         {fotos.map((foto, i) => (
           <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200">

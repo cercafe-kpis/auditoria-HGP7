@@ -1,20 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  LabelList,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import { useAuthToken } from '../../auth/useAuthToken';
 import { listarAuditorias, listarInclinaciones } from '../../graph/lists';
 import { useCatalogosOffline } from '../catalogos/useCatalogosOffline';
@@ -26,14 +13,6 @@ function primerDiaDelMes(): string {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
 
-/** Convierte "2026-08-01" en "01/08" para etiquetas compactas de eje X. */
-function formatearFechaCorta(iso: string): string {
-  const partes = iso.split('-');
-  if (partes.length !== 3) return iso;
-  const [, mes, dia] = partes;
-  return `${dia}/${mes}`;
-}
-
 /** "3 (43%)" — formato compacto de cantidad + porcentaje usado en varias tarjetas y en la tabla por operario. */
 function formatearCantidadYPorcentaje(cantidad: number, total: number): string {
   const porcentaje = total === 0 ? 0 : Math.round((cantidad / total) * 100);
@@ -42,7 +21,7 @@ function formatearCantidadYPorcentaje(cantidad: number, total: number): string {
 
 const COLOR_CLASIFICACION: Record<string, string> = {
   Bueno: '#16a34a',
-  Regular: '#d97706',
+  Regular: '#eab308',
   Malo: '#ea580c',
   Insuficiente: '#dc2626',
 };
@@ -65,8 +44,12 @@ const COLOR_INCLINACION_INCORRECTA = '#dc2626';
  *
  * Incluye exportación a PDF: se captura como imagen todo el contenido del
  * panel (membrete + KPIs + gráficos + tabla por operario, vía
- * `contenidoRef`) con html2canvas y se inserta en un documento jsPDF de
- * una sola página.
+ * `contenidoRef`) con html2canvas-pro y se inserta en un documento jsPDF
+ * de una sola página. Usamos el fork "html2canvas-pro" (no "html2canvas"
+ * a secas) porque la librería original no sabe interpretar el formato de
+ * color `oklch(...)` que Tailwind v4 usa para TODOS sus colores — con la
+ * original, exportar tiraba un error silencioso ("Attempting to parse an
+ * unsupported color function oklch") y no generaba nada.
  */
 export function IndicadoresPage() {
   const { getAccessToken } = useAuthToken();
@@ -78,6 +61,7 @@ export function IndicadoresPage() {
   const [inclinaciones, setInclinaciones] = useState<InclinacionRemota[]>([]);
   const [cargando, setCargando] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [errorExportando, setErrorExportando] = useState<string | null>(null);
   const contenidoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -135,23 +119,6 @@ export function IndicadoresPage() {
     return { total, conMarca, marcaCorrecta };
   }, [auditorias]);
 
-  // Un día por fila, con el conteo de cada clasificación ese día — para
-  // ver de un vistazo cómo evolucionó la calidad de canal a lo largo del
-  // rango filtrado, no solo el acumulado total.
-  const porDia = useMemo(() => {
-    const mapa = new Map<string, Record<string, number>>();
-    for (const a of auditorias) {
-      if (!mapa.has(a.fechaAuditoria)) {
-        mapa.set(a.fechaAuditoria, { Bueno: 0, Regular: 0, Malo: 0, Insuficiente: 0 });
-      }
-      const fila = mapa.get(a.fechaAuditoria)!;
-      fila[a.clasificacion] = (fila[a.clasificacion] ?? 0) + 1;
-    }
-    return Array.from(mapa.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([fecha, conteo]) => ({ fecha: formatearFechaCorta(fecha), ...conteo }));
-  }, [auditorias]);
-
   // Comparativo por operario: por cada operario auditado en el rango,
   // cuántas canales se le revisaron y de esas cuántas tenían marca y
   // cuántas tenían la marca intercostal correcta — para ver si un
@@ -193,27 +160,12 @@ export function IndicadoresPage() {
     [inclinacion],
   );
 
-  // Mismo agrupado por día que `porDia`, pero sumando los totales de
-  // inclinación de todas las sesiones registradas ese día (puede haber más
-  // de una sesión por día si auditaron varios auditores u operarios).
-  const inclinacionPorDia = useMemo(() => {
-    const mapa = new Map<string, { revisadas: number; correctas: number }>();
-    for (const i of inclinaciones) {
-      if (!mapa.has(i.fechaAuditoria)) mapa.set(i.fechaAuditoria, { revisadas: 0, correctas: 0 });
-      const fila = mapa.get(i.fechaAuditoria)!;
-      fila.revisadas += i.canalesRevisadas;
-      fila.correctas += i.canalesCorrectas;
-    }
-    return Array.from(mapa.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([fecha, datos]) => ({ fecha: formatearFechaCorta(fecha), ...datos }));
-  }, [inclinaciones]);
-
   const nombrePlantaFiltro = plantaId ? plantas.find((p) => p.id === plantaId)?.nombre ?? '—' : 'Todas las plantas';
 
   async function exportarPDF() {
     if (!contenidoRef.current) return;
     setExportando(true);
+    setErrorExportando(null);
     try {
       const canvas = await html2canvas(contenidoRef.current, {
         scale: 2,
@@ -235,6 +187,11 @@ export function IndicadoresPage() {
       const x = (pageWidth - imgWidth) / 2;
       pdf.addImage(imgData, 'PNG', x, margen, imgWidth, imgHeight);
       pdf.save(`Indicadores_HGP7_${fechaDesde}_a_${fechaHasta}.pdf`);
+    } catch (err) {
+      // No dejar el error en silencio: sin este catch, un fallo en
+      // html2canvas simplemente no producía nada y el usuario no tenía
+      // forma de saber que algo salió mal.
+      setErrorExportando(err instanceof Error ? err.message : 'No se pudo generar el PDF.');
     } finally {
       setExportando(false);
     }
@@ -253,6 +210,12 @@ export function IndicadoresPage() {
           {exportando ? 'Generando PDF…' : '⬇ Exportar a PDF'}
         </button>
       </div>
+
+      {errorExportando && (
+        <div className="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm">
+          No se pudo generar el PDF: {errorExportando}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <select value={plantaId} onChange={(e) => setPlantaId(e.target.value)} className="h-11 rounded-lg border border-slate-300 px-3">
@@ -284,17 +247,15 @@ export function IndicadoresPage() {
           <img src={cercafeLogoDataUrl} alt="Cercafe" className="h-12 w-auto shrink-0" />
         </div>
 
-        {/* Tarjetas generales — no tocar el orden/contenido de estas dos filas. */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <TarjetaKpi etiqueta="Total auditorías" valor={auditorias.length.toString()} />
+        {/* Tarjetas generales. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+          <TarjetaKpi etiqueta="Canales revisadas (Clasificación)" valor={auditorias.length.toString()} />
           <TarjetaKpi etiqueta="% Canal grasosa" valor={`${porcentajeGrasosa}%`} />
-          <TarjetaKpi etiqueta="Bueno" valor={String(porClasificacion.find((c) => c.clasificacion === 'Bueno')?.total ?? 0)} />
-          <TarjetaKpi etiqueta="Insuficiente" valor={String(porClasificacion.find((c) => c.clasificacion === 'Insuficiente')?.total ?? 0)} />
+          <TarjetaKpi etiqueta="Bueno" valor={formatearCantidadYPorcentaje(porClasificacion.find((c) => c.clasificacion === 'Bueno')?.total ?? 0, auditorias.length)} />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <TarjetaKpi etiqueta="% Inclinación correcta" valor={`${inclinacion.porcentaje}%`} />
-          <TarjetaKpi etiqueta="Canales revisadas (inclinación)" valor={inclinacion.revisadas.toString()} />
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-8">
@@ -342,40 +303,6 @@ export function IndicadoresPage() {
           </div>
         )}
 
-        <p className="text-sm font-semibold text-slate-600 mb-2">Clasificación por día auditado</p>
-        {porDia.length === 0 ? (
-          <p className="text-sm text-slate-400 mb-10">No hay auditorías registradas en este rango.</p>
-        ) : (
-          <div className="h-64 mb-10">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={porDia}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Legend />
-                {(['Bueno', 'Regular', 'Malo', 'Insuficiente'] as const).map((clasificacion) => (
-                  <Bar
-                    key={clasificacion}
-                    dataKey={clasificacion}
-                    stackId="clasificacion"
-                    fill={COLOR_CLASIFICACION[clasificacion]}
-                    name={clasificacion}
-                  >
-                    <LabelList
-                      dataKey={clasificacion}
-                      position="inside"
-                      fill="#fff"
-                      fontSize={11}
-                      formatter={(valor) => (typeof valor === 'number' && valor > 0 ? valor : '')}
-                    />
-                  </Bar>
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
         {/* Inclinación acumulada — torta con % correcta/incorrecta + tarjetas. */}
         <p className="text-sm font-semibold text-slate-600 mb-2">Inclinación de la herramienta (acumulado del rango)</p>
         {inclinacion.revisadas === 0 ? (
@@ -416,29 +343,6 @@ export function IndicadoresPage() {
                 <p className="text-xs text-slate-500 mt-1">Inclinación correcta (%)</p>
               </div>
             </div>
-          </div>
-        )}
-
-        <p className="text-sm font-semibold text-slate-600 mb-2">Inclinación de la herramienta por día</p>
-        {inclinacionPorDia.length === 0 ? (
-          <p className="text-sm text-slate-400 mb-10">No hay muestreos de inclinación registrados en este rango.</p>
-        ) : (
-          <div className="h-64 mb-10">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={inclinacionPorDia}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="revisadas" fill="#94a3b8" name="Canales revisadas">
-                  <LabelList dataKey="revisadas" position="top" fontSize={11} />
-                </Bar>
-                <Bar dataKey="correctas" fill="#16a34a" name="Inclinación correcta">
-                  <LabelList dataKey="correctas" position="top" fontSize={11} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
           </div>
         )}
 

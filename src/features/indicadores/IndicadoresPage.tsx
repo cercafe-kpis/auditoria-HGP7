@@ -43,8 +43,8 @@ const COLOR_INCLINACION_INCORRECTA = '#dc2626';
  * tooltip que solo aparece con hover no saldría en esa foto.
  *
  * Incluye exportación a PDF: se captura como imagen todo el contenido del
- * panel (membrete + KPIs + gráficos + tabla por operario + recomendaciones,
- * vía `contenidoRef`) con html2canvas-pro y se inserta en un documento jsPDF
+ * panel (membrete + KPIs + gráficos + tabla por operario, vía
+ * `contenidoRef`) con html2canvas-pro y se inserta en un documento jsPDF
  * de una sola página. Usamos el fork "html2canvas-pro" (no "html2canvas"
  * a secas) porque la librería original no sabe interpretar el formato de
  * color `oklch(...)` que Tailwind v4 usa para TODOS sus colores — con la
@@ -267,17 +267,17 @@ export function IndicadoresPage() {
           <p className="text-sm text-slate-400 mb-10">No hay auditorías registradas en este rango.</p>
         ) : (
           <div className="mb-10">
-            <div className="h-64">
+            <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 24, right: 24, bottom: 8, left: 24 }}>
                   <Pie
                     data={porClasificacion}
                     dataKey="total"
                     nameKey="clasificacion"
                     cx="50%"
                     cy="50%"
-                    outerRadius={90}
-                    label={(props) => `${props.name}: ${Math.round((props.percent ?? 0) * 100)}%`}
+                    outerRadius={85}
+                    label={(props) => `${Math.round((props.percent ?? 0) * 100)}%`}
                   >
                     {porClasificacion.map((entrada) => (
                       <Cell key={entrada.clasificacion} fill={COLOR_CLASIFICACION[entrada.clasificacion]} />
@@ -307,17 +307,17 @@ export function IndicadoresPage() {
           <p className="text-sm text-slate-400 mb-10">No hay muestreos de inclinación registrados en este rango.</p>
         ) : (
           <div className="mb-10">
-            <div className="h-64">
+            <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 24, right: 24, bottom: 8, left: 24 }}>
                   <Pie
                     data={inclinacionPie}
                     dataKey="valor"
                     nameKey="nombre"
                     cx="50%"
                     cy="50%"
-                    outerRadius={90}
-                    label={(props) => `${props.name}: ${Math.round((props.percent ?? 0) * 100)}%`}
+                    outerRadius={85}
+                    label={(props) => `${Math.round((props.percent ?? 0) * 100)}%`}
                   >
                     <Cell fill={COLOR_INCLINACION_CORRECTA} />
                     <Cell fill={COLOR_INCLINACION_INCORRECTA} />

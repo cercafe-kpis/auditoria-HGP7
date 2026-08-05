@@ -1,6 +1,34 @@
 import { useMsal } from '@azure/msal-react';
 import { InteractionRequiredAuthError } from '@azure/msal-browser';
 import { graphLoginRequest } from './msalConfig';
+import { appConfig } from '../config/appConfig';
+
+/**
+ * Envuelve una promesa con un límite de tiempo propio. No cancela la
+ * promesa original — MSAL no expone una forma de abortar
+ * acquireTokenSilent — pero permite que el código de la app siga su curso
+ * aunque esa promesa nunca se resuelva. Es el mismo truco que graphFetch()
+ * usa para las llamadas a Microsoft Graph, y por el mismo motivo: en campo,
+ * con señal débil, la llamada de red que MSAL hace para renovar el token
+ * puede quedarse esperando para siempre. Sin este límite, eso deja el
+ * ítem en 'Sincronizando…' para siempre, sin ni siquiera llegar a intentar
+ * la llamada a Graph (que sí tiene su propio límite en graphClient.ts).
+ */
+function conLimiteDeTiempo<T>(promesa: Promise<T>, ms: number, mensaje: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const temporizador = setTimeout(() => reject(new Error(mensaje)), ms);
+    promesa.then(
+      (valor) => {
+        clearTimeout(temporizador);
+        resolve(valor);
+      },
+      (error) => {
+        clearTimeout(temporizador);
+        reject(error);
+      },
+    );
+  });
+}
 
 /**
  * Hook que expone una función para obtener un token de acceso válido para
@@ -43,10 +71,11 @@ export function useAuthToken() {
     }
 
     try {
-      const result = await instance.acquireTokenSilent({
-        ...graphLoginRequest,
-        account,
-      });
+      const result = await conLimiteDeTiempo(
+        instance.acquireTokenSilent({ ...graphLoginRequest, account }),
+        appConfig.aad.timeoutMs,
+        'Se agotó el tiempo de espera confirmando la sesión con Microsoft.',
+      );
       return result.accessToken;
     } catch (error) {
       if (error instanceof InteractionRequiredAuthError) {
@@ -61,19 +90,20 @@ export function useAuthToken() {
         throw new Error('Se requiere iniciar sesión nuevamente para sincronizar.');
       }
 
-      // Cualquier otro fallo de acquireTokenSilent (por ejemplo un
-      // "timed_out": MSAL usa una técnica interna —un iframe oculto— para
-      // confirmar la sesión sin interrumpir al usuario, y puede agotar su
-      // propio tiempo de espera con una conexión lenta/inestable o con
-      // cookies de terceros bloqueadas por el navegador) suele ser
-      // pasajero. Se intenta una vez más antes de darse por vencido, y si
-      // vuelve a fallar se traduce a un mensaje claro en vez de mostrar el
-      // error técnico interno de la librería tal cual.
+      // Cualquier otro fallo (por ejemplo, nuestro propio límite de tiempo,
+      // o un "timed_out" real de MSAL: su técnica interna —un iframe
+      // oculto— para confirmar la sesión sin interrumpir al usuario puede
+      // agotar su propio tiempo de espera con una conexión lenta/inestable
+      // o con cookies de terceros bloqueadas) suele ser pasajero. Se
+      // intenta una vez más antes de darse por vencido, y si vuelve a
+      // fallar se traduce a un mensaje claro en vez de mostrar el error
+      // técnico interno de la librería tal cual.
       try {
-        const reintento = await instance.acquireTokenSilent({
-          ...graphLoginRequest,
-          account,
-        });
+        const reintento = await conLimiteDeTiempo(
+          instance.acquireTokenSilent({ ...graphLoginRequest, account }),
+          appConfig.aad.timeoutMs,
+          'Se agotó el tiempo de espera confirmando la sesión con Microsoft.',
+        );
         return reintento.accessToken;
       } catch {
         const mensaje = error instanceof Error ? error.message : String(error);

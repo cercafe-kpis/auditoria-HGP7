@@ -1,7 +1,7 @@
 /** Tipos que reflejan exactamente las columnas de las Listas de SharePoint
  * definidas en el documento de arquitectura (sección 4). */
 
-export type Rol = 'Administrador' | 'Auditor' | 'Consulta';
+export type Rol = 'Administrador' | 'Auditor' | 'Consulta' | 'Supervisor';
 
 export type Clasificacion = 'Bueno' | 'Regular' | 'Malo' | 'Insuficiente';
 

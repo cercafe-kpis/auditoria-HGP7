@@ -32,36 +32,59 @@ async function graphFetch<T>(
   // pasa a 'error-sync' (porque nunca falla) y el candado
   // `syncEnCurso` de syncService.ts queda bloqueado indefinidamente,
   // impidiendo que se sincronice CUALQUIER otro registro, incluso en
-  // reintentos automáticos o manuales posteriores. Con el timeout, la
-  // solicitud colgada se aborta, el ítem se marca 'error-sync' y el
-  // resto de la cola sigue su curso normalmente.
+  // reintentos automáticos o manuales posteriores.
+  //
+  // No basta con controller.abort(): Safari/WebKit en iOS tiene fallas
+  // conocidas donde abortar una solicitud CON CUERPO (como el PUT de una
+  // foto de evidencia) no hace que fetch() realmente se rechace — la
+  // promesa se queda esperando para siempre aunque la señal de abort ya
+  // se haya disparado. Por eso, en vez de confiar solo en abort(), se hace
+  // una carrera (Promise.race) contra un temporizador independiente: así
+  // el código de la app SIEMPRE sigue su curso al cumplirse el tiempo
+  // límite, sin importar si el navegador coopera con el abort o no (la
+  // solicitud real puede seguir viva un rato en segundo plano, pero ya no
+  // bloquea nada).
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let temporizador: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    temporizador = setTimeout(() => {
+      controller.abort();
+      reject(
+        new GraphError(
+          `Se agotó el tiempo de espera esperando respuesta del servidor (${path}). ` +
+            'La conexión es probablemente muy débil o intermitente; se reintentará automáticamente.',
+          0,
+        ),
+      );
+    }, timeoutMs);
+  });
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(init?.body && !(init.body instanceof FormData)
-          ? { 'Content-Type': 'application/json' }
-          : {}),
-        ...init?.headers,
-      },
-    });
+    res = await Promise.race([
+      fetch(url, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(init?.body && !(init.body instanceof FormData)
+            ? { 'Content-Type': 'application/json' }
+            : {}),
+          ...init?.headers,
+        },
+      }),
+      timeoutPromise,
+    ]);
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new GraphError(
-        `Se agotó el tiempo de espera esperando respuesta del servidor (${path}). ` +
-          'La conexión es probablemente muy débil o intermitente; se reintentará automáticamente.',
-        0,
-      );
-    }
-    throw err;
+    // Si ya es nuestro GraphError de timeout, se propaga tal cual (mensaje
+    // claro ya armado). Cualquier otro error de red (sin conexión, DNS,
+    // CORS, etc.) se traduce también a un mensaje en español en vez de
+    // mostrar el texto técnico crudo del navegador.
+    if (err instanceof GraphError) throw err;
+    const mensaje = err instanceof Error ? err.message : String(err);
+    throw new GraphError(`No se pudo conectar con el servidor (${path}): ${mensaje}`, 0);
   } finally {
-    clearTimeout(timeoutId);
+    clearTimeout(temporizador!);
   }
 
   if (!res.ok) {

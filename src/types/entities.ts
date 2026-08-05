@@ -126,6 +126,26 @@ export interface AuditoriaRemota {
   recibidaEn: string;
 }
 
+/**
+ * Observación/recomendación de texto libre que el auditor escribe en el
+ * informe de Indicadores (ver IndicadoresPage) — está ligada a la
+ * combinación exacta de filtros con la que se generó el informe (planta +
+ * rango de fechas), no a una auditoría puntual. `clave` es esa combinación
+ * codificada como texto (ver claveObservacion en graph/lists.ts) y es la
+ * que se usa para buscar/actualizar el registro (UPSERT), igual que
+ * IdCliente en InclinacionLocal/AuditoriaLocal.
+ */
+export interface ObservacionIndicadores {
+  id: string;
+  clave: string;
+  plantaId: string; // vacío = "todas las plantas"
+  fechaDesde: string;
+  fechaHasta: string;
+  texto: string;
+  actualizadoPorCorreo: string;
+  actualizadoEn: string;
+}
+
 export interface AuditoriaLogEntry {
   auditoriaId: string;
   usuarioCorreo: string;

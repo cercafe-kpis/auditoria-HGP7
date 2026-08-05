@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { useMsal } from '@azure/msal-react';
+import { useState } from 'react';
 import { useCatalogosOffline } from '../catalogos/useCatalogosOffline';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import { SegmentedYesNo } from '../../components/SegmentedYesNo';
@@ -7,7 +6,7 @@ import { ClassificationPicker } from '../../components/ClassificationPicker';
 import { CameraCapture } from '../../components/CameraCapture';
 import { db } from '../../offline/db';
 import { auditoriaSchema } from './schema';
-import type { Clasificacion, AuditoriaLocal } from '../../types/entities';
+import type { Clasificacion, AuditoriaLocal, SesionActivaLocal } from '../../types/entities';
 
 interface FotoCapturada {
   blob: Blob;
@@ -15,14 +14,25 @@ interface FotoCapturada {
   nombreArchivo: string;
 }
 
-const PASOS = ['Información general', 'Evaluación y evidencia', 'Revisión'] as const;
+const PASOS = ['Evaluación y evidencia', 'Revisión'] as const;
 
 function nuevoUuid(): string {
   return crypto.randomUUID();
 }
 
-export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
-  const { accounts } = useMsal();
+/**
+ * Wizard de la auditoría de canal ("Clasificación / medición"). Ya NO
+ * pide Fecha/Planta/Metodología/Auditor/Operario — esos vienen de la
+ * sesión activa del día (ver SesionForm/SesionPage) y se reciben aquí por
+ * props. Arranca directo en Tiquete.
+ */
+export function AuditoriaWizard({
+  sesion,
+  onGuardada,
+}: {
+  sesion: SesionActivaLocal;
+  onGuardada: () => void;
+}) {
   const { usuario } = useCurrentUser();
   const { plantas, metodologias, operarios } = useCatalogosOffline();
 
@@ -30,46 +40,16 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
   const [guardando, setGuardando] = useState(false);
   const [errores, setErrores] = useState<string[]>([]);
 
-  // Paso 1
-  const [fechaAuditoria, setFechaAuditoria] = useState(() => new Date().toISOString().slice(0, 10));
-  const [plantaId, setPlantaId] = useState('');
-  const [metodologiaId, setMetodologiaId] = useState('');
-  const [operarioId, setOperarioId] = useState('');
+  // Paso "Evaluación y evidencia"
   const [numeroTiquete, setNumeroTiquete] = useState('');
-
-  // Paso 2
-  const [inclinacionHerramienta, setInclinacionHerramienta] = useState<boolean | null>(null);
   const [tieneMarca, setTieneMarca] = useState<boolean | null>(null);
   const [marcaIntercostalCorrecta, setMarcaIntercostalCorrecta] = useState<boolean | null>(null);
   const [clasificacion, setClasificacion] = useState<Clasificacion | null>(null);
   const [canalGrasosa, setCanalGrasosa] = useState<boolean | null>(null);
-
-  // Paso 3
   const [fotos, setFotos] = useState<FotoCapturada[]>([]);
-
-  // El auditor autenticado se preselecciona automáticamente (no es un
-  // campo que él mismo tenga que diligenciar). Solo el rol Administrador
-  // puede modificar la fecha — ver documento de arquitectura, sección 7.2.
-  const esAdministrador = usuario?.rol === 'Administrador';
-  const auditorCorreo = accounts[0]?.username ?? '';
-
-  const operariosDePlanta = useMemo(
-    () => operarios.filter((o) => o.plantaId === plantaId),
-    [operarios, plantaId],
-  );
 
   function validarPasoActual(): boolean {
     if (paso === 0) {
-      const faltan: string[] = [];
-      if (!fechaAuditoria) faltan.push('Fecha');
-      if (!plantaId) faltan.push('Planta');
-      if (!metodologiaId) faltan.push('Metodología');
-      if (!operarioId) faltan.push('Operario');
-      if (inclinacionHerramienta === null) faltan.push('Inclinación de la herramienta');
-      setErrores(faltan);
-      return faltan.length === 0;
-    }
-    if (paso === 1) {
       const faltan: string[] = [];
       if (!numeroTiquete.trim()) faltan.push('Número de tiquete');
       if (tieneMarca === null) faltan.push('¿Tiene marca?');
@@ -94,12 +74,11 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
 
   async function guardar() {
     const candidato = {
-      fechaAuditoria,
-      plantaId,
-      metodologiaId,
-      operarioId,
+      fechaAuditoria: sesion.fechaAuditoria,
+      plantaId: sesion.plantaId,
+      metodologiaId: sesion.metodologiaId,
+      operarioId: sesion.operarioId,
       numeroTiquete: numeroTiquete.trim(),
-      inclinacionHerramienta,
       tieneMarca,
       marcaIntercostalCorrecta,
       clasificacion,
@@ -117,13 +96,12 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
       const idCliente = nuevoUuid();
       const registro: AuditoriaLocal = {
         idCliente,
-        fechaAuditoria,
-        plantaId,
-        metodologiaId,
-        auditorCorreo,
-        operarioId,
+        fechaAuditoria: sesion.fechaAuditoria,
+        plantaId: sesion.plantaId,
+        metodologiaId: sesion.metodologiaId,
+        auditorCorreo: sesion.auditorCorreo,
+        operarioId: sesion.operarioId,
         numeroTiquete: numeroTiquete.trim(),
-        inclinacionHerramienta: inclinacionHerramienta as boolean,
         tieneMarca: tieneMarca as boolean,
         marcaIntercostalCorrecta: marcaIntercostalCorrecta as boolean,
         clasificacion: clasificacion as Clasificacion,
@@ -170,84 +148,6 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
       )}
 
       {paso === 0 && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
-            <input
-              type="date"
-              value={fechaAuditoria}
-              onChange={(e) => setFechaAuditoria(e.target.value)}
-              readOnly={!esAdministrador}
-              className="w-full h-12 rounded-lg border border-slate-300 px-3 disabled:bg-slate-100"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Planta</label>
-            <select
-              value={plantaId}
-              onChange={(e) => {
-                setPlantaId(e.target.value);
-                setOperarioId('');
-              }}
-              className="w-full h-12 rounded-lg border border-slate-300 px-3"
-            >
-              <option value="">Selecciona…</option>
-              {plantas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Metodología</label>
-            <select
-              value={metodologiaId}
-              onChange={(e) => setMetodologiaId(e.target.value)}
-              className="w-full h-12 rounded-lg border border-slate-300 px-3"
-            >
-              <option value="">Selecciona…</option>
-              {metodologias.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nombre} ({m.version})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Auditor</label>
-            <input
-              type="text"
-              value={usuario?.nombre ?? auditorCorreo}
-              readOnly
-              className="w-full h-12 rounded-lg border border-slate-300 px-3 bg-slate-100 text-slate-600"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Operario</label>
-            <select
-              value={operarioId}
-              onChange={(e) => setOperarioId(e.target.value)}
-              disabled={!plantaId}
-              className="w-full h-12 rounded-lg border border-slate-300 px-3 disabled:bg-slate-100"
-            >
-              <option value="">{plantaId ? 'Selecciona…' : 'Primero elige una planta'}</option>
-              {operariosDePlanta.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <SegmentedYesNo
-            label="Inclinación de la herramienta correcta"
-            value={inclinacionHerramienta}
-            onChange={setInclinacionHerramienta}
-          />
-        </div>
-      )}
-
-      {paso === 1 && (
         <div>
           <div className="mb-4">
             <label className="block text-sm font-medium text-slate-700 mb-1">Número de tiquete</label>
@@ -275,14 +175,16 @@ export function AuditoriaWizard({ onGuardada }: { onGuardada: () => void }) {
         </div>
       )}
 
-      {paso === 2 && (
+      {paso === 1 && (
         <div className="space-y-2 text-sm">
-          <ResumenFila etiqueta="Fecha" valor={fechaAuditoria} />
-          <ResumenFila etiqueta="Planta" valor={plantas.find((p) => p.id === plantaId)?.nombre ?? '—'} />
-          <ResumenFila etiqueta="Metodología" valor={metodologias.find((m) => m.id === metodologiaId)?.nombre ?? '—'} />
-          <ResumenFila etiqueta="Auditor" valor={usuario?.nombre ?? auditorCorreo} />
-          <ResumenFila etiqueta="Operario" valor={operarios.find((o) => o.id === operarioId)?.nombre ?? '—'} />
-          <ResumenFila etiqueta="Inclinación herramienta correcta" valor={inclinacionHerramienta ? 'Sí' : 'No'} />
+          <ResumenFila etiqueta="Fecha" valor={sesion.fechaAuditoria} />
+          <ResumenFila etiqueta="Planta" valor={plantas.find((p) => p.id === sesion.plantaId)?.nombre ?? '—'} />
+          <ResumenFila
+            etiqueta="Metodología"
+            valor={metodologias.find((m) => m.id === sesion.metodologiaId)?.nombre ?? '—'}
+          />
+          <ResumenFila etiqueta="Auditor" valor={usuario?.nombre ?? sesion.auditorCorreo} />
+          <ResumenFila etiqueta="Operario" valor={operarios.find((o) => o.id === sesion.operarioId)?.nombre ?? '—'} />
           <ResumenFila etiqueta="Tiquete" valor={numeroTiquete} />
           <ResumenFila etiqueta="Tiene marca" valor={tieneMarca ? 'Sí' : 'No'} />
           <ResumenFila etiqueta="Marca intercostal correcta" valor={marcaIntercostalCorrecta ? 'Sí' : 'No'} />

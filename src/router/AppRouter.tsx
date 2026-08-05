@@ -9,6 +9,7 @@ import { UsuariosAdmin } from '../features/catalogos/UsuariosAdmin';
 import { IndicadoresPage } from '../features/indicadores/IndicadoresPage';
 import { RoleGuard } from '../components/RoleGuard';
 import { useCurrentUser } from '../features/auth/useCurrentUser';
+import { cercafeLogoDataUrl } from '../assets/cercafeLogo';
 
 /**
  * Enrutamiento con HashRouter (no BrowserRouter): GitHub Pages no soporta
@@ -43,7 +44,8 @@ function AppShell() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <nav className="bg-white border-b border-slate-200 px-4 py-3 flex gap-4 text-sm font-medium overflow-x-auto">
+      <nav className="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-4 text-sm font-medium overflow-x-auto">
+        <img src={cercafeLogoDataUrl} alt="Cercafe" className="h-8 w-auto shrink-0" />
         <Link to="/" className="text-slate-700 whitespace-nowrap">
           Auditorías
         </Link>

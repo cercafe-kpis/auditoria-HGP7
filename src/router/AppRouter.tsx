@@ -1,7 +1,7 @@
 import { HashRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from '@azure/msal-react';
 import { LoginPage } from '../features/auth/LoginPage';
-import { MisAuditoriasPage } from '../features/auditoria/MisAuditoriasPage';
+import { SesionPage } from '../features/sesion/SesionPage';
 import { PlantasAdmin } from '../features/catalogos/PlantasAdmin';
 import { MetodologiasAdmin } from '../features/catalogos/MetodologiasAdmin';
 import { OperariosAdmin } from '../features/catalogos/OperariosAdmin';
@@ -87,7 +87,7 @@ function AppShell() {
           path="/"
           element={
             <RoleGuard permitido={['Auditor', 'Administrador']}>
-              <MisAuditoriasPage />
+              <SesionPage />
             </RoleGuard>
           }
         />

@@ -41,8 +41,13 @@ export function useSyncQueue() {
     let manejador: ReturnType<typeof setTimeout>;
 
     async function ciclo() {
-      const conError = await db.auditoriasPendientes.where('estado').equals('error-sync').first();
-      const espera = conError ? calcularEsperaBackoff(conError.intentosSync) : 30000;
+      const [conErrorAuditoria, conErrorInclinacion] = await Promise.all([
+        db.auditoriasPendientes.where('estado').equals('error-sync').first(),
+        db.inclinacionesPendientes.where('estado').equals('error-sync').first(),
+      ]);
+      const intentosMax = Math.max(conErrorAuditoria?.intentosSync ?? 0, conErrorInclinacion?.intentosSync ?? 0);
+      const hayError = Boolean(conErrorAuditoria || conErrorInclinacion);
+      const espera = hayError ? calcularEsperaBackoff(intentosMax) : 30000;
       manejador = setTimeout(async () => {
         if (cancelado) return;
         await sincronizarAhora();

@@ -60,7 +60,27 @@ export function useAuthToken() {
         await instance.acquireTokenRedirect(graphLoginRequest);
         throw new Error('Se requiere iniciar sesión nuevamente para sincronizar.');
       }
-      throw error;
+
+      // Cualquier otro fallo de acquireTokenSilent (por ejemplo un
+      // "timed_out": MSAL usa una técnica interna —un iframe oculto— para
+      // confirmar la sesión sin interrumpir al usuario, y puede agotar su
+      // propio tiempo de espera con una conexión lenta/inestable o con
+      // cookies de terceros bloqueadas por el navegador) suele ser
+      // pasajero. Se intenta una vez más antes de darse por vencido, y si
+      // vuelve a fallar se traduce a un mensaje claro en vez de mostrar el
+      // error técnico interno de la librería tal cual.
+      try {
+        const reintento = await instance.acquireTokenSilent({
+          ...graphLoginRequest,
+          account,
+        });
+        return reintento.accessToken;
+      } catch {
+        const mensaje = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `No se pudo confirmar tu sesión de Microsoft (${mensaje}). Verifica tu conexión a internet e intenta de nuevo en unos segundos.`,
+        );
+      }
     }
   }
 

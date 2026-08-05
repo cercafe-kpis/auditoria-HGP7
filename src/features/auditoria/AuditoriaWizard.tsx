@@ -56,7 +56,6 @@ export function AuditoriaWizard({
       if (marcaIntercostalCorrecta === null) faltan.push('¿Marca intercostal correcta?');
       if (!clasificacion) faltan.push('Clasificación');
       if (canalGrasosa === null) faltan.push('¿Canal grasosa?');
-      if (fotos.length === 0) faltan.push('Debes adjuntar al menos una fotografía');
       setErrores(faltan);
       return faltan.length === 0;
     }
@@ -169,7 +168,9 @@ export function AuditoriaWizard({
           <ClassificationPicker value={clasificacion} onChange={setClasificacion} />
           <SegmentedYesNo label="¿La canal está grasosa?" value={canalGrasosa} onChange={setCanalGrasosa} />
           <div className="mt-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Evidencia fotográfica</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Evidencia fotográfica <span className="text-slate-400 font-normal">(opcional)</span>
+            </label>
             <CameraCapture fotos={fotos} onFotosChange={setFotos} />
           </div>
         </div>

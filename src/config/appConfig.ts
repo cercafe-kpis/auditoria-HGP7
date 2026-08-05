@@ -57,5 +57,14 @@ export const appConfig = {
     // completamente separado del de pulmones — solo se comparte la
     // identidad de la aplicación en Entra ID, no el código.
     scopes: ['Sites.ReadWrite.All'],
+    // Tiempo máximo de espera por solicitud a Graph antes de abortarla y
+    // marcarla como fallida (ver graphClient.ts). Sin esto, una solicitud
+    // en una conexión de campo débil o intermitente puede quedar "colgada"
+    // indefinidamente y bloquear TODA la cola de sincronización detrás de
+    // ella (ver syncService.ts) — nunca falla, pero tampoco avanza.
+    timeoutMs: 25000,
+    // Las fotos de evidencia pesan más que un simple registro JSON, así que
+    // se les da más tiempo antes de considerarlas colgadas.
+    uploadTimeoutMs: 60000,
   },
 } as const;

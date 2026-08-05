@@ -8,6 +8,7 @@ import type {
   AuditoriaRemota,
   AuditoriaLogEntry,
   InclinacionRemota,
+  ObservacionIndicadores,
   Rol,
 } from '../types/entities';
 
@@ -688,6 +689,113 @@ export async function guardarInclinacionSesion(
     { method: 'POST', body: JSON.stringify(body) },
   );
   return mapInclinacion(created);
+}
+
+// ---------- Observaciones del informe de Indicadores ----------
+// Texto libre y opcional que el auditor escribe al final del informe de
+// Indicadores (ver IndicadoresPage) — se guarda ligado a la combinación
+// exacta de filtros (planta + rango de fechas) con la que se generó ese
+// informe, no a una auditoría puntual. Es un UPSERT por "clave" (mismo
+// patrón que guardarInclinacionSesion): si ya existe una observación para
+// esa misma combinación de filtros, se actualiza en vez de duplicar.
+interface ObservacionFields {
+  Title: string; // clave (ver claveObservacion)
+  PlantaId: string; // vacío = "todas las plantas"
+  FechaDesde: string;
+  FechaHasta: string;
+  Observaciones: string;
+  ActualizadoPorCorreo: string;
+  ActualizadoEn: string;
+}
+
+function mapObservacion(item: SpListItem<ObservacionFields>): ObservacionIndicadores {
+  const f = item.fields;
+  return {
+    id: item.id,
+    clave: f.Title,
+    plantaId: f.PlantaId ?? '',
+    fechaDesde: f.FechaDesde,
+    fechaHasta: f.FechaHasta,
+    texto: f.Observaciones ?? '',
+    actualizadoPorCorreo: f.ActualizadoPorCorreo,
+    actualizadoEn: f.ActualizadoEn,
+  };
+}
+
+/** Codifica la combinación planta+rango como una clave de texto estable. */
+export function claveObservacion(plantaId: string, fechaDesde: string, fechaHasta: string): string {
+  return `${plantaId || 'todas'}_${fechaDesde}_${fechaHasta}`;
+}
+
+export async function buscarObservacion(
+  token: string,
+  plantaId: string,
+  fechaDesde: string,
+  fechaHasta: string,
+): Promise<ObservacionIndicadores | null> {
+  const clave = claveObservacion(plantaId, fechaDesde, fechaHasta);
+  const items = await getAllItems<ObservacionFields>(
+    token,
+    appConfig.listas.indicadoresObservaciones,
+    `fields/Title eq '${clave.replace(/'/g, "''")}'`,
+  );
+  return items[0] ? mapObservacion(items[0]) : null;
+}
+
+export interface GuardarObservacionInput {
+  plantaId: string;
+  fechaDesde: string;
+  fechaHasta: string;
+  texto: string;
+  correo: string;
+}
+
+/**
+ * Guarda (crea o actualiza) la observación del informe para esta
+ * combinación exacta de planta+rango. UPSERT real, igual que
+ * guardarInclinacionSesion: si ya existe un ítem con la misma clave se
+ * actualiza (PATCH) en vez de crear uno nuevo.
+ */
+export async function guardarObservacion(
+  token: string,
+  input: GuardarObservacionInput,
+): Promise<ObservacionIndicadores> {
+  const clave = claveObservacion(input.plantaId, input.fechaDesde, input.fechaHasta);
+  const existente = await buscarObservacion(token, input.plantaId, input.fechaDesde, input.fechaHasta);
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.indicadoresObservaciones);
+  const ahora = new Date().toISOString();
+
+  if (existente) {
+    await graph.fetch(`/sites/${siteId}/lists/${listId}/items/${existente.id}/fields`, token, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        Observaciones: input.texto,
+        ActualizadoPorCorreo: input.correo,
+        ActualizadoEn: ahora,
+      }),
+    });
+    return { ...existente, texto: input.texto, actualizadoPorCorreo: input.correo, actualizadoEn: ahora };
+  }
+
+  const created: SpListItem<ObservacionFields> = await graph.fetch(
+    `/sites/${siteId}/lists/${listId}/items`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Title: clave,
+          PlantaId: input.plantaId,
+          FechaDesde: input.fechaDesde,
+          FechaHasta: input.fechaHasta,
+          Observaciones: input.texto,
+          ActualizadoPorCorreo: input.correo,
+          ActualizadoEn: ahora,
+        },
+      }),
+    },
+  );
+  return mapObservacion(created);
 }
 
 // ---------- Evidencia fotográfica ----------

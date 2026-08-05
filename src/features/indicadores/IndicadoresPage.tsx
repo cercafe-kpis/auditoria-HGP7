@@ -43,8 +43,8 @@ const COLOR_INCLINACION_INCORRECTA = '#dc2626';
  * tooltip que solo aparece con hover no saldría en esa foto.
  *
  * Incluye exportación a PDF: se captura como imagen todo el contenido del
- * panel (membrete + KPIs + gráficos + tabla por operario, vía
- * `contenidoRef`) con html2canvas-pro y se inserta en un documento jsPDF
+ * panel (membrete + KPIs + gráficos + tabla por operario + recomendaciones,
+ * vía `contenidoRef`) con html2canvas-pro y se inserta en un documento jsPDF
  * de una sola página. Usamos el fork "html2canvas-pro" (no "html2canvas"
  * a secas) porque la librería original no sabe interpretar el formato de
  * color `oklch(...)` que Tailwind v4 usa para TODOS sus colores — con la
@@ -62,6 +62,7 @@ export function IndicadoresPage() {
   const [cargando, setCargando] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [errorExportando, setErrorExportando] = useState<string | null>(null);
+  const [observaciones, setObservaciones] = useState('');
   const contenidoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -371,6 +372,24 @@ export function IndicadoresPage() {
             </table>
           </div>
         )}
+
+        {/* Recomendaciones/observaciones del auditor — opcional, en texto
+            libre. Se incluye como último bloque del informe (también
+            queda en el PDF exportado, ya que está dentro de contenidoRef,
+            y html2canvas-pro sí captura el valor actual de un <textarea>). */}
+        <div className="mt-8">
+          <label className="block text-sm font-semibold text-slate-600 mb-2">
+            Recomendaciones y observaciones{' '}
+            <span className="text-slate-400 font-normal">(opcional)</span>
+          </label>
+          <textarea
+            value={observaciones}
+            onChange={(e) => setObservaciones(e.target.value)}
+            placeholder="Escribe aquí observaciones o recomendaciones sobre este periodo, si lo consideras necesario…"
+            rows={4}
+            className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-700 placeholder:text-slate-400"
+          />
+        </div>
       </div>
     </div>
   );

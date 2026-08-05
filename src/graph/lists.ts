@@ -7,6 +7,7 @@ import type {
   UsuarioApp,
   AuditoriaRemota,
   AuditoriaLogEntry,
+  InclinacionRemota,
   Rol,
 } from '../types/entities';
 
@@ -382,7 +383,6 @@ interface AuditoriaFields {
   AuditorCorreo: string;
   OperarioLookupId: string;
   NumeroTiquete: string;
-  InclinacionHerramienta: boolean;
   TieneMarca: boolean;
   MarcaIntercostalCorrecta: boolean;
   Clasificacion: AuditoriaRemota['clasificacion'];
@@ -403,7 +403,6 @@ function mapAuditoria(item: SpListItem<AuditoriaFields>): AuditoriaRemota {
     auditorCorreo: f.AuditorCorreo,
     operarioId: f.OperarioLookupId,
     numeroTiquete: f.NumeroTiquete,
-    inclinacionHerramienta: f.InclinacionHerramienta,
     tieneMarca: f.TieneMarca,
     marcaIntercostalCorrecta: f.MarcaIntercostalCorrecta,
     clasificacion: f.Clasificacion,
@@ -463,7 +462,6 @@ export interface NuevaAuditoriaInput {
   auditorCorreo: string;
   operarioId: string;
   numeroTiquete: string;
-  inclinacionHerramienta: boolean;
   tieneMarca: boolean;
   marcaIntercostalCorrecta: boolean;
   clasificacion: AuditoriaRemota['clasificacion'];
@@ -495,7 +493,6 @@ export async function crearAuditoriaIdempotente(
       AuditorCorreo: input.auditorCorreo,
       OperarioLookupId: Number(input.operarioId),
       NumeroTiquete: input.numeroTiquete,
-      InclinacionHerramienta: input.inclinacionHerramienta,
       TieneMarca: input.tieneMarca,
       MarcaIntercostalCorrecta: input.marcaIntercostalCorrecta,
       Clasificacion: input.clasificacion,
@@ -555,6 +552,142 @@ async function registrarLogCambio(token: string, entry: AuditoriaLogEntry): Prom
       },
     }),
   });
+}
+
+// ---------- Inclinación de herramienta (muestreo por sesión) ----------
+// Lista independiente de Auditorías: no se relaciona con un tiquete/canal
+// puntual, sino con una sesión (fecha+planta+metodología+auditor+operario)
+// en la que el auditor revisó N canales y anotó cuántas tenían la
+// inclinación de la herramienta correcta. Ver comentario en
+// types/entities.ts (InclinacionLocal) para el porqué de la separación.
+interface InclinacionFields {
+  Title: string; // IdCliente (UUID)
+  FechaAuditoria: string;
+  PlantaLookupId: string;
+  MetodologiaLookupId: string;
+  AuditorCorreo: string;
+  OperarioLookupId: string;
+  CanalesRevisadas: number;
+  CanalesCorrectas: number;
+  EstadoSync: InclinacionRemota['estadoSync'];
+  CapturadaEn: string;
+  RecibidaEn: string;
+}
+
+function mapInclinacion(item: SpListItem<InclinacionFields>): InclinacionRemota {
+  const f = item.fields;
+  return {
+    id: item.id,
+    idCliente: f.Title,
+    fechaAuditoria: f.FechaAuditoria,
+    plantaId: f.PlantaLookupId,
+    metodologiaId: f.MetodologiaLookupId,
+    auditorCorreo: f.AuditorCorreo,
+    operarioId: f.OperarioLookupId,
+    canalesRevisadas: f.CanalesRevisadas,
+    canalesCorrectas: f.CanalesCorrectas,
+    estadoSync: f.EstadoSync,
+    capturadaEn: f.CapturadaEn,
+    recibidaEn: f.RecibidaEn,
+  };
+}
+
+export interface FiltrosInclinaciones {
+  plantaId?: string;
+  fechaDesde?: string;
+  fechaHasta?: string;
+}
+
+export async function listarInclinaciones(
+  token: string,
+  filtros: FiltrosInclinaciones,
+): Promise<InclinacionRemota[]> {
+  const partes: string[] = [];
+  if (filtros.plantaId) partes.push(`fields/PlantaLookupId eq ${filtros.plantaId}`);
+  if (filtros.fechaDesde) partes.push(`fields/FechaAuditoria ge '${filtros.fechaDesde}'`);
+  if (filtros.fechaHasta) partes.push(`fields/FechaAuditoria le '${filtros.fechaHasta}'`);
+  const filter = partes.length ? partes.join(' and ') : undefined;
+  const items = await getAllItems<InclinacionFields>(
+    token,
+    appConfig.listas.inclinacionHerramienta,
+    filter,
+  );
+  return items.map(mapInclinacion);
+}
+
+/** Busca si ya existe un registro con este IdCliente (para idempotencia). */
+export async function buscarInclinacionPorIdCliente(
+  token: string,
+  idCliente: string,
+): Promise<InclinacionRemota | null> {
+  const items = await getAllItems<InclinacionFields>(
+    token,
+    appConfig.listas.inclinacionHerramienta,
+    `fields/Title eq '${idCliente}'`,
+  );
+  return items[0] ? mapInclinacion(items[0]) : null;
+}
+
+export interface NuevaInclinacionInput {
+  idCliente: string;
+  fechaAuditoria: string;
+  plantaId: string;
+  metodologiaId: string;
+  auditorCorreo: string;
+  operarioId: string;
+  canalesRevisadas: number;
+  canalesCorrectas: number;
+  capturadaEn: string;
+}
+
+/**
+ * Guarda el agregado de inclinación de la sesión en SharePoint. A
+ * diferencia de crearAuditoriaIdempotente (que nunca toca un ítem que ya
+ * existe), esto es un UPSERT real: el agregado de una sesión crece con
+ * cada Sí/No que el auditor registra, así que si el ítem ya existe se
+ * ACTUALIZAN sus totales (PATCH) en vez de dejarlo intacto. Sigue siendo
+ * idempotente por IdCliente — nunca crea un segundo ítem para la misma
+ * sesión.
+ */
+export async function guardarInclinacionSesion(
+  token: string,
+  input: NuevaInclinacionInput,
+): Promise<InclinacionRemota> {
+  const existente = await buscarInclinacionPorIdCliente(token, input.idCliente);
+  const { siteId, listId } = await siteAndList(token, appConfig.listas.inclinacionHerramienta);
+
+  if (existente) {
+    await graph.fetch(`/sites/${siteId}/lists/${listId}/items/${existente.id}/fields`, token, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        CanalesRevisadas: input.canalesRevisadas,
+        CanalesCorrectas: input.canalesCorrectas,
+      }),
+    });
+    return { ...existente, canalesRevisadas: input.canalesRevisadas, canalesCorrectas: input.canalesCorrectas };
+  }
+
+  const body = {
+    fields: {
+      Title: input.idCliente,
+      FechaAuditoria: input.fechaAuditoria,
+      PlantaLookupId: Number(input.plantaId),
+      MetodologiaLookupId: Number(input.metodologiaId),
+      AuditorCorreo: input.auditorCorreo,
+      OperarioLookupId: Number(input.operarioId),
+      CanalesRevisadas: input.canalesRevisadas,
+      CanalesCorrectas: input.canalesCorrectas,
+      EstadoSync: 'Sincronizada',
+      CapturadaEn: input.capturadaEn,
+      RecibidaEn: new Date().toISOString(),
+    },
+  };
+  const created: SpListItem<InclinacionFields> = await graph.fetch(
+    `/sites/${siteId}/lists/${listId}/items`,
+    token,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  return mapInclinacion(created);
 }
 
 // ---------- Evidencia fotográfica ----------

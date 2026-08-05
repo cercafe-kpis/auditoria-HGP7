@@ -18,7 +18,6 @@ export const auditoriaSchema = z.object({
     .string()
     .trim()
     .min(1, 'El número de tiquete no puede estar vacío'),
-  inclinacionHerramienta: z.boolean({ message: 'Campo obligatorio' }),
   tieneMarca: z.boolean({ message: 'Campo obligatorio' }),
   marcaIntercostalCorrecta: z.boolean({ message: 'Campo obligatorio' }),
   clasificacion: z.enum(['Bueno', 'Regular', 'Malo', 'Insuficiente'], {

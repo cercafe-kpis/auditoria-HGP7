@@ -254,11 +254,8 @@ export function IndicadoresPage() {
           <TarjetaKpi etiqueta="Bueno" valor={formatearCantidadYPorcentaje(porClasificacion.find((c) => c.clasificacion === 'Bueno')?.total ?? 0, auditorias.length)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
           <TarjetaKpi etiqueta="% Inclinación correcta" valor={`${inclinacion.porcentaje}%`} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-8">
           <TarjetaKpi etiqueta="Tiene marca" valor={formatearCantidadYPorcentaje(marca.conMarca, marca.total)} />
           <TarjetaKpi etiqueta="Marca correcta" valor={formatearCantidadYPorcentaje(marca.marcaCorrecta, marca.total)} />
         </div>

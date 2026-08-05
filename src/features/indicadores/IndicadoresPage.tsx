@@ -3,7 +3,8 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recha
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import { useAuthToken } from '../../auth/useAuthToken';
-import { listarAuditorias, listarInclinaciones } from '../../graph/lists';
+import { buscarObservacion, guardarObservacion, listarAuditorias, listarInclinaciones } from '../../graph/lists';
+import { useCurrentUser } from '../auth/useCurrentUser';
 import { useCatalogosOffline } from '../catalogos/useCatalogosOffline';
 import { cercafeLogoDataUrl } from '../../assets/cercafeLogo';
 import type { AuditoriaRemota, InclinacionRemota } from '../../types/entities';
@@ -53,6 +54,8 @@ const COLOR_INCLINACION_INCORRECTA = '#dc2626';
  */
 export function IndicadoresPage() {
   const { getAccessToken } = useAuthToken();
+  const { usuario, correo } = useCurrentUser();
+  const puedeEditarObservacion = usuario?.rol !== 'Consulta';
   const { plantas, operarios } = useCatalogosOffline();
   const [plantaId, setPlantaId] = useState('');
   const [fechaDesde, setFechaDesde] = useState(primerDiaDelMes());
@@ -63,6 +66,10 @@ export function IndicadoresPage() {
   const [exportando, setExportando] = useState(false);
   const [errorExportando, setErrorExportando] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState('');
+  const [cargandoObservacion, setCargandoObservacion] = useState(false);
+  const [guardandoObservacion, setGuardandoObservacion] = useState(false);
+  const [errorObservacion, setErrorObservacion] = useState<string | null>(null);
+  const [observacionGuardadaEn, setObservacionGuardadaEn] = useState<string | null>(null);
   const contenidoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,6 +104,56 @@ export function IndicadoresPage() {
       cancelado = true;
     };
   }, [plantaId, fechaDesde, fechaHasta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // La observación guardada está ligada a esta combinación exacta de
+  // filtros (ver claveObservacion en graph/lists.ts) — al cambiar de
+  // planta o de rango, se reemplaza el texto por el que esté guardado para
+  // esos filtros (o se limpia si todavía no hay ninguno).
+  useEffect(() => {
+    let cancelado = false;
+    async function cargarObservacion() {
+      if (!navigator.onLine) return;
+      setCargandoObservacion(true);
+      setErrorObservacion(null);
+      setObservacionGuardadaEn(null);
+      try {
+        const token = await getAccessToken();
+        const existente = await buscarObservacion(token, plantaId, fechaDesde, fechaHasta);
+        if (!cancelado) {
+          setObservaciones(existente?.texto ?? '');
+          if (existente) setObservacionGuardadaEn(existente.actualizadoEn);
+        }
+      } catch (e) {
+        if (!cancelado) setErrorObservacion(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelado) setCargandoObservacion(false);
+      }
+    }
+    void cargarObservacion();
+    return () => {
+      cancelado = true;
+    };
+  }, [plantaId, fechaDesde, fechaHasta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function guardarObservacionAhora() {
+    setGuardandoObservacion(true);
+    setErrorObservacion(null);
+    try {
+      const token = await getAccessToken();
+      const guardada = await guardarObservacion(token, {
+        plantaId,
+        fechaDesde,
+        fechaHasta,
+        texto: observaciones,
+        correo: correo ?? '',
+      });
+      setObservacionGuardadaEn(guardada.actualizadoEn);
+    } catch (e) {
+      setErrorObservacion(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGuardandoObservacion(false);
+    }
+  }
 
   const porClasificacion = useMemo(() => {
     const conteo: Record<string, number> = { Bueno: 0, Regular: 0, Malo: 0, Insuficiente: 0 };
@@ -376,19 +433,48 @@ export function IndicadoresPage() {
         {/* Recomendaciones/observaciones del auditor — opcional, en texto
             libre. Se incluye como último bloque del informe (también
             queda en el PDF exportado, ya que está dentro de contenidoRef,
-            y html2canvas-pro sí captura el valor actual de un <textarea>). */}
+            y html2canvas-pro sí captura el valor actual de un <textarea>).
+            Queda guardada en SharePoint ligada a esta combinación exacta
+            de planta+rango (ver claveObservacion), así que si vuelves a
+            entrar con los mismos filtros la vuelves a ver. */}
         <div className="mt-8">
-          <label className="block text-sm font-semibold text-slate-600 mb-2">
-            Recomendaciones y observaciones{' '}
-            <span className="text-slate-400 font-normal">(opcional)</span>
-          </label>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <label className="block text-sm font-semibold text-slate-600">
+              Recomendaciones y observaciones{' '}
+              <span className="text-slate-400 font-normal">(opcional)</span>
+            </label>
+            {puedeEditarObservacion && (
+              <button
+                type="button"
+                onClick={() => void guardarObservacionAhora()}
+                disabled={guardandoObservacion || cargandoObservacion}
+                className="h-9 px-3 rounded-lg bg-blue-600 text-white text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+              >
+                {guardandoObservacion ? 'Guardando…' : 'Guardar observación'}
+              </button>
+            )}
+          </div>
           <textarea
             value={observaciones}
             onChange={(e) => setObservaciones(e.target.value)}
-            placeholder="Escribe aquí observaciones o recomendaciones sobre este periodo, si lo consideras necesario…"
+            placeholder={
+              puedeEditarObservacion
+                ? 'Escribe aquí observaciones o recomendaciones sobre este periodo, si lo consideras necesario…'
+                : 'Sin observaciones para este periodo.'
+            }
             rows={4}
-            className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-700 placeholder:text-slate-400"
+            disabled={cargandoObservacion || !puedeEditarObservacion}
+            className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-700 placeholder:text-slate-400 disabled:opacity-60"
           />
+          {cargandoObservacion && <p className="text-xs text-slate-400 mt-1">Cargando observación guardada…</p>}
+          {errorObservacion && (
+            <p className="text-xs text-rose-600 mt-1">No se pudo guardar/cargar: {errorObservacion}</p>
+          )}
+          {!cargandoObservacion && !errorObservacion && observacionGuardadaEn && (
+            <p className="text-xs text-emerald-600 mt-1">
+              Guardada — última vez el {new Date(observacionGuardadaEn).toLocaleString('es-CO')}.
+            </p>
+          )}
         </div>
       </div>
     </div>

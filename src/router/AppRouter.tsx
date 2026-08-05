@@ -49,7 +49,7 @@ function AppShell() {
         <Link to="/" className="text-slate-700 whitespace-nowrap">
           Auditorías
         </Link>
-        {(usuario?.rol === 'Administrador' || usuario?.rol === 'Consulta') && (
+        {(usuario?.rol === 'Administrador' || usuario?.rol === 'Consulta' || usuario?.rol === 'Supervisor') && (
           <Link to="/indicadores" className="text-slate-700 whitespace-nowrap">
             Indicadores
           </Link>
@@ -88,7 +88,7 @@ function AppShell() {
         <Route
           path="/"
           element={
-            <RoleGuard permitido={['Auditor', 'Administrador']}>
+            <RoleGuard permitido={['Auditor', 'Administrador', 'Supervisor']}>
               <SesionPage />
             </RoleGuard>
           }
@@ -96,7 +96,7 @@ function AppShell() {
         <Route
           path="/indicadores"
           element={
-            <RoleGuard permitido={['Administrador', 'Consulta', 'Auditor']}>
+            <RoleGuard permitido={['Administrador', 'Consulta', 'Auditor', 'Supervisor']}>
               <IndicadoresPage />
             </RoleGuard>
           }
@@ -135,6 +135,10 @@ function AppShell() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      <footer className="text-center text-xs text-slate-400 py-6">
+        Desarrollado por Gestión técnica especializada
+      </footer>
     </div>
   );
 }

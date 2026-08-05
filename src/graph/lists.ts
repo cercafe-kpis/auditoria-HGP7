@@ -820,6 +820,7 @@ export async function subirEvidencia(
     `/sites/${siteId}/drives/${driveId}/root:/${encodeURIComponent(rutaCarpeta)}/${encodeURIComponent(nombre)}:/content`,
     token,
     { method: 'PUT', body: blob, headers: { 'Content-Type': blob.type || 'image/jpeg' } },
+    appConfig.graph.uploadTimeoutMs,
   );
   return item.id;
 }

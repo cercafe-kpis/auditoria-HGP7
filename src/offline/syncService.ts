@@ -7,7 +7,7 @@ import {
 } from '../graph/lists';
 import type { AuditoriaLocal, InclinacionLocal } from '../types/entities';
 
-type TokenGetter = () => Promise<string>;
+type TokenGetter = (interactivo?: boolean) => Promise<string>;
 
 let syncEnCurso = false;
 
@@ -26,7 +26,10 @@ let syncEnCurso = false;
  * Se llama: al detectar el evento 'online', periódicamente en segundo
  * plano, y desde un botón manual "Sincronizar ahora" en la UI.
  */
-export async function procesarColaSincronizacion(getAccessToken: TokenGetter): Promise<{
+export async function procesarColaSincronizacion(
+  getAccessToken: TokenGetter,
+  interactivo = false,
+): Promise<{
   sincronizadas: number;
   fallidas: number;
 }> {
@@ -43,7 +46,7 @@ export async function procesarColaSincronizacion(getAccessToken: TokenGetter): P
 
     for (const auditoria of pendientesAuditorias) {
       try {
-        await sincronizarUnaAuditoria(auditoria, getAccessToken);
+        await sincronizarUnaAuditoria(auditoria, getAccessToken, interactivo);
         sincronizadas++;
       } catch (err) {
         fallidas++;
@@ -58,7 +61,7 @@ export async function procesarColaSincronizacion(getAccessToken: TokenGetter): P
 
     for (const inclinacion of pendientesInclinaciones) {
       try {
-        await sincronizarUnaInclinacion(inclinacion, getAccessToken);
+        await sincronizarUnaInclinacion(inclinacion, getAccessToken, interactivo);
         sincronizadas++;
       } catch (err) {
         fallidas++;
@@ -72,9 +75,13 @@ export async function procesarColaSincronizacion(getAccessToken: TokenGetter): P
   return { sincronizadas, fallidas };
 }
 
-async function sincronizarUnaAuditoria(auditoria: AuditoriaLocal, getAccessToken: TokenGetter) {
+async function sincronizarUnaAuditoria(
+  auditoria: AuditoriaLocal,
+  getAccessToken: TokenGetter,
+  interactivo: boolean,
+) {
   await db.auditoriasPendientes.update(auditoria.idCliente, { estado: 'sincronizando' });
-  const token = await getAccessToken();
+  const token = await getAccessToken(interactivo);
 
   // 1) Subir fotos primero — si falla, no se crea el ítem de auditoría
   //    todavía, para no dejar un registro "sincronizado" sin evidencia.
@@ -112,9 +119,13 @@ async function registrarFalloAuditoria(auditoria: AuditoriaLocal, err: unknown) 
   });
 }
 
-async function sincronizarUnaInclinacion(inclinacion: InclinacionLocal, getAccessToken: TokenGetter) {
+async function sincronizarUnaInclinacion(
+  inclinacion: InclinacionLocal,
+  getAccessToken: TokenGetter,
+  interactivo: boolean,
+) {
   await db.inclinacionesPendientes.update(inclinacion.idCliente, { estado: 'sincronizando' });
-  const token = await getAccessToken();
+  const token = await getAccessToken(interactivo);
 
   await guardarInclinacionSesion(token, {
     idCliente: inclinacion.idCliente,

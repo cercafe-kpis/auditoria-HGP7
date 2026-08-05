@@ -20,6 +20,13 @@ export const appConfig = {
     clientId: requireEnv('VITE_AAD_CLIENT_ID', '00000000-0000-0000-0000-000000000000'),
     tenantId: requireEnv('VITE_AAD_TENANT_ID', '00000000-0000-0000-0000-000000000000'),
     redirectUri: requireEnv('VITE_AAD_REDIRECT_URI', window.location.origin + '/'),
+    // Tiempo máximo de espera para que MSAL confirme/renueve la sesión en
+    // silencio (ver useAuthToken.ts). Esta llamada es de red igual que las
+    // de Graph, pero es un paso ANTERIOR a cualquier llamada a Graph — sin
+    // límite propio aquí, una sesión colgada en este paso deja el ítem en
+    // 'Sincronizando…' para siempre sin ni siquiera llegar a intentar subir
+    // la foto o crear el registro (que sí tienen su propio límite).
+    timeoutMs: 20000,
   },
   sharepoint: {
     hostname: requireEnv('VITE_SP_HOSTNAME', 'tuempresa.sharepoint.com'),

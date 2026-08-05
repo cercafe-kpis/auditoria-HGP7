@@ -23,18 +23,46 @@ async function graphFetch<T>(
   path: string,
   token: string,
   init?: RequestInit,
+  timeoutMs: number = appConfig.graph.timeoutMs,
 ): Promise<T> {
   const url = path.startsWith('http') ? path : `${appConfig.graph.baseUrl}${path}`;
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(init?.body && !(init.body instanceof FormData)
-        ? { 'Content-Type': 'application/json' }
-        : {}),
-      ...init?.headers,
-    },
-  });
+
+  // Sin esto, en una conexión de campo débil o intermitente un fetch()
+  // puede quedarse esperando para siempre: el registro de la cola nunca
+  // pasa a 'error-sync' (porque nunca falla) y el candado
+  // `syncEnCurso` de syncService.ts queda bloqueado indefinidamente,
+  // impidiendo que se sincronice CUALQUIER otro registro, incluso en
+  // reintentos automáticos o manuales posteriores. Con el timeout, la
+  // solicitud colgada se aborta, el ítem se marca 'error-sync' y el
+  // resto de la cola sigue su curso normalmente.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(init?.body && !(init.body instanceof FormData)
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...init?.headers,
+      },
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new GraphError(
+        `Se agotó el tiempo de espera esperando respuesta del servidor (${path}). ` +
+          'La conexión es probablemente muy débil o intermitente; se reintentará automáticamente.',
+        0,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!res.ok) {
     let body: unknown;

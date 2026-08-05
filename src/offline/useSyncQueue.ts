@@ -18,15 +18,22 @@ export function useSyncQueue() {
 
   const pendientes = useLiveQuery(() => contarPendientes(), [], 0);
 
-  const sincronizarAhora = useCallback(async () => {
-    if (!online) return;
-    setSincronizando(true);
-    try {
-      await procesarColaSincronizacion(getAccessToken);
-    } finally {
-      setSincronizando(false);
-    }
-  }, [online, getAccessToken]);
+  // `interactivo` distingue una sincronización disparada por un toque
+  // explícito del usuario (puede pedirle iniciar sesión de nuevo si hace
+  // falta) de una automática en segundo plano (nunca debe interrumpir con
+  // una redirección de página completa — ver useAuthToken.ts).
+  const sincronizarAhora = useCallback(
+    async (interactivo = false) => {
+      if (!online) return;
+      setSincronizando(true);
+      try {
+        await procesarColaSincronizacion(getAccessToken, interactivo);
+      } finally {
+        setSincronizando(false);
+      }
+    },
+    [online, getAccessToken],
+  );
 
   // Sincroniza automáticamente al recuperar conexión.
   useEffect(() => {

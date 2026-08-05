@@ -10,7 +10,7 @@ import type { UsuarioApp } from '../../types/entities';
 const usuarioSchema = z.object({
   nombre: z.string().min(1, 'El nombre es obligatorio'),
   correo: z.string().min(1, 'El correo es obligatorio').email('Correo inválido'),
-  rol: z.enum(['Administrador', 'Auditor', 'Consulta']),
+  rol: z.enum(['Administrador', 'Auditor', 'Consulta', 'Supervisor']),
   activo: z.boolean(),
 });
 type UsuarioForm = z.infer<typeof usuarioSchema>;
@@ -145,6 +145,7 @@ export function UsuariosAdmin() {
           <select {...register('rol')} className="w-full h-11 rounded-lg border border-slate-300 px-3">
             <option value="Administrador">Administrador</option>
             <option value="Auditor">Auditor</option>
+            <option value="Supervisor">Supervisor</option>
             <option value="Consulta">Consulta</option>
           </select>
           {errors.rol && <p className="text-xs text-rose-600 mt-1">{errors.rol.message}</p>}

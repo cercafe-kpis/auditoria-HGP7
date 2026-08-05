@@ -229,6 +229,30 @@ export function IndicadoresPage() {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
+        // html2canvas-pro (igual que el html2canvas original) NO sabe
+        // dibujar bien el contenido de un <textarea>: lo pinta con una
+        // fuente distinta y SIN el salto de línea automático, así que
+        // texto largo queda cortado a la derecha en vez de verse en
+        // varias líneas — se nota más en pantallas angostas (celular)
+        // porque ahí el mismo texto necesitaría más líneas para verse
+        // completo. onclone corre sobre una copia del DOM que solo usa
+        // esta captura (no toca la pantalla real): ahí reemplazamos el
+        // <textarea> por un <div> con el mismo texto, que sí se dibuja
+        // como texto normal, con el salto de línea correcto.
+        onclone: (clonedDoc) => {
+          const textarea = clonedDoc.getElementById('observaciones-textarea') as HTMLTextAreaElement | null;
+          if (textarea) {
+            const espejo = clonedDoc.createElement('div');
+            espejo.textContent =
+              textarea.value.trim() || 'Sin observaciones registradas para este periodo.';
+            espejo.className = textarea.className;
+            espejo.style.whiteSpace = 'pre-wrap';
+            espejo.style.wordBreak = 'break-word';
+            espejo.style.minHeight = `${textarea.offsetHeight}px`;
+            if (!textarea.value.trim()) espejo.style.color = '#94a3b8'; // slate-400, igual que el placeholder
+            textarea.replaceWith(espejo);
+          }
+        },
       });
       const imgData = canvas.toDataURL('image/png');
       const orientacion = canvas.width > canvas.height ? 'landscape' : 'portrait';
@@ -438,7 +462,7 @@ export function IndicadoresPage() {
             de planta+rango (ver claveObservacion), así que si vuelves a
             entrar con los mismos filtros la vuelves a ver. */}
         <div className="mt-8">
-          <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 mb-2">
             <label className="block text-sm font-semibold text-slate-600">
               Recomendaciones y observaciones{' '}
               <span className="text-slate-400 font-normal">(opcional)</span>
@@ -448,13 +472,14 @@ export function IndicadoresPage() {
                 type="button"
                 onClick={() => void guardarObservacionAhora()}
                 disabled={guardandoObservacion || cargandoObservacion}
-                className="h-9 px-3 rounded-lg bg-blue-600 text-white text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+                className="h-9 px-3 rounded-lg bg-blue-600 text-white text-xs font-semibold whitespace-nowrap self-start sm:self-auto disabled:opacity-50"
               >
                 {guardandoObservacion ? 'Guardando…' : 'Guardar observación'}
               </button>
             )}
           </div>
           <textarea
+            id="observaciones-textarea"
             value={observaciones}
             onChange={(e) => setObservaciones(e.target.value)}
             placeholder={

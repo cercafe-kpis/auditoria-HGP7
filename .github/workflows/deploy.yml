@@ -6,16 +6,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,16 +39,16 @@ jobs:
           VITE_SP_EVIDENCIAS_LIBRARY: ${{ vars.VITE_SP_EVIDENCIAS_LIBRARY }}
         run: npm run build
 
-      - uses: actions/upload-pages-artifact@v3
+      # Antes se usaba actions/deploy-pages (la API "de publicación" nueva
+      # de GitHub), pero esa API se quedó atascada repetidamente en
+      # "deployment_queued" sin avanzar nunca (un problema del lado de
+      # GitHub, no del código). Esta acción evita esa API por completo: en
+      # vez de "publicar" mediante una llamada especial, simplemente sube
+      # el contenido de dist/ a la rama gh-pages con un commit normal de
+      # git — el mecanismo clásico y más simple de GitHub Pages, que no
+      # depende de esa cola que se estaba trabando.
+      - name: Deploy a la rama gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist

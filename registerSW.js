@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/auditoria-HGP7/sw.js', { scope: '/auditoria-HGP7/' })})}

@@ -800,17 +800,30 @@ export async function guardarObservacion(
 
 // ---------- Evidencia fotográfica ----------
 
+/** SharePoint no permite ciertos caracteres en nombres de carpeta/archivo. */
+function sanitizarParaRuta(texto: string): string {
+  return texto.replace(/["*:<>?/\\|#%~]/g, '_').trim();
+}
+
 /** Sube una foto a la biblioteca de documentos "Evidencias" y devuelve su ID. */
 export async function subirEvidencia(
   token: string,
   idCliente: string,
+  numeroTiquete: string,
   orden: number,
   blob: Blob,
   nombreArchivo: string,
 ): Promise<string> {
   const siteId = await resolveSiteId(token);
   const driveId = await resolveEvidenciasDriveId(token, siteId);
-  const rutaCarpeta = idCliente; // una carpeta por auditoría dentro de la biblioteca
+  // La carpeta empieza con el número de tiquete para que sea fácil de
+  // reconocer al navegar la biblioteca "Evidencias" directamente en
+  // SharePoint, pero termina siempre con el IdCliente (UUID) para
+  // garantizar que sea única: el mismo número de tiquete puede repetirse
+  // en otro día, otra planta, o por un error de captura — sin el UUID, las
+  // fotos de dos auditorías distintas con el mismo tiquete terminarían
+  // mezclándose (o sobrescribiéndose) en la misma carpeta.
+  const rutaCarpeta = `${sanitizarParaRuta(numeroTiquete)}_${idCliente}`;
   const nombre = `${orden}_${nombreArchivo}`;
 
   // Subida simple (válida hasta ~4MB, suficiente para fotos ya comprimidas

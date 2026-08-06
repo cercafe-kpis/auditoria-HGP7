@@ -88,7 +88,6 @@ async function sincronizarUnaAuditoria(
   for (const foto of auditoria.fotos) {
     await subirEvidencia(
       token,
-      auditoria.idCliente,
       auditoria.numeroTiquete,
       foto.orden,
       foto.blob,

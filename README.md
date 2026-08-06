@@ -4,7 +4,6 @@ App web responsive y offline-first para auditar la medición de grasa dorsal en 
 
 Ver el documento de arquitectura completo (`Arquitectura-App-Auditoria-Grasa-Dorsal.md`, entregado junto con este scaffold) para el detalle de decisiones y trade-offs. Este README cubre solo lo operativo: cómo configurar, correr y desplegar.
 
-
 ## 1. Qué necesitas antes de empezar
 
 - Acceso al registro de aplicación en Microsoft Entra ID que ya usa la app "Inspección Pulmonar" (se reutiliza el mismo — ver sección 2), o alguien de TI que pueda hacer el ajuste de la sección 2 por ti.

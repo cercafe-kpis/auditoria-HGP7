@@ -808,7 +808,6 @@ function sanitizarParaRuta(texto: string): string {
 /** Sube una foto a la biblioteca de documentos "Evidencias" y devuelve su ID. */
 export async function subirEvidencia(
   token: string,
-  idCliente: string,
   numeroTiquete: string,
   orden: number,
   blob: Blob,
@@ -816,21 +815,19 @@ export async function subirEvidencia(
 ): Promise<string> {
   const siteId = await resolveSiteId(token);
   const driveId = await resolveEvidenciasDriveId(token, siteId);
-  // La carpeta empieza con el número de tiquete para que sea fácil de
-  // reconocer al navegar la biblioteca "Evidencias" directamente en
-  // SharePoint, pero termina siempre con el IdCliente (UUID) para
-  // garantizar que sea única: el mismo número de tiquete puede repetirse
-  // en otro día, otra planta, o por un error de captura — sin el UUID, las
-  // fotos de dos auditorías distintas con el mismo tiquete terminarían
-  // mezclándose (o sobrescribiéndose) en la misma carpeta.
-  const rutaCarpeta = `${sanitizarParaRuta(numeroTiquete)}_${idCliente}`;
-  const nombre = `${orden}_${nombreArchivo}`;
+  // Se guarda directamente en la raíz de la biblioteca "Evidencias", sin
+  // carpeta: el número de tiquete nunca se repite en ninguna planta ni
+  // fecha (confirmado con Nathalia, agosto 2026), así que por sí solo ya
+  // identifica de forma única a qué auditoría pertenece la foto. El
+  // "orden" (1, 2...) distingue las 1 o 2 fotos que a veces se toman para
+  // el mismo tiquete, normalmente en el mismo instante.
+  const nombre = `${sanitizarParaRuta(numeroTiquete)}_${orden}_${nombreArchivo}`;
 
   // Subida simple (válida hasta ~4MB, suficiente para fotos ya comprimidas
   // en el cliente a 150-400KB). Para archivos más grandes, usar upload
   // session: POST /createUploadSession.
   const item: { id: string } = await graph.fetch(
-    `/sites/${siteId}/drives/${driveId}/root:/${encodeURIComponent(rutaCarpeta)}/${encodeURIComponent(nombre)}:/content`,
+    `/sites/${siteId}/drives/${driveId}/root:/${encodeURIComponent(nombre)}:/content`,
     token,
     { method: 'PUT', body: blob, headers: { 'Content-Type': blob.type || 'image/jpeg' } },
     appConfig.graph.uploadTimeoutMs,

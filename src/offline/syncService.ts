@@ -86,7 +86,14 @@ async function sincronizarUnaAuditoria(
   // 1) Subir fotos primero — si falla, no se crea el ítem de auditoría
   //    todavía, para no dejar un registro "sincronizado" sin evidencia.
   for (const foto of auditoria.fotos) {
-    await subirEvidencia(token, auditoria.idCliente, foto.orden, foto.blob, foto.nombreArchivo);
+    await subirEvidencia(
+      token,
+      auditoria.idCliente,
+      auditoria.numeroTiquete,
+      foto.orden,
+      foto.blob,
+      foto.nombreArchivo,
+    );
   }
 
   // 2) Crear el ítem en la Lista Auditorías (idempotente por IdCliente).

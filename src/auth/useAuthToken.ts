@@ -95,9 +95,7 @@ export function useAuthToken() {
       // oculto— para confirmar la sesión sin interrumpir al usuario puede
       // agotar su propio tiempo de espera con una conexión lenta/inestable
       // o con cookies de terceros bloqueadas) suele ser pasajero. Se
-      // intenta una vez más antes de darse por vencido, y si vuelve a
-      // fallar se traduce a un mensaje claro en vez de mostrar el error
-      // técnico interno de la librería tal cual.
+      // intenta una vez más antes de darse por vencido.
       try {
         const reintento = await conLimiteDeTiempo(
           instance.acquireTokenSilent({ ...graphLoginRequest, account }),
@@ -107,9 +105,46 @@ export function useAuthToken() {
         return reintento.accessToken;
       } catch {
         const mensaje = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `No se pudo confirmar tu sesión de Microsoft (${mensaje}). Verifica tu conexión a internet e intenta de nuevo en unos segundos.`,
-        );
+
+        if (!interactivo) {
+          // En segundo plano nunca se interrumpe con una redirección — se
+          // deja el ítem en error claro para reintentar cuando la persona
+          // vuelva a tocar "Sincronizar ahora" (ver comentario del parámetro
+          // `interactivo` más arriba).
+          throw new Error(
+            `No se pudo confirmar tu sesión de Microsoft (${mensaje}). Verifica tu conexión a internet e intenta de nuevo en unos segundos.`,
+          );
+        }
+
+        // Llegar aquí en un contexto interactivo (por ejemplo, al abrir
+        // Indicadores) significa que la renovación silenciosa quedó en un
+        // estado del que reintentar en silencio NO la recupera — esto se
+        // observó en campo (agosto 2026): la persona deja la app abierta en
+        // segundo plano un rato largo (o la reabre al otro día) y, al
+        // volver, la renovación silenciosa se queda esperando una
+        // respuesta que nunca llega, típicamente porque el navegador
+        // bloquea las cookies de terceros que esa técnica necesita como
+        // último recurso (Safari/iOS lo hace por defecto). Ni esperar ni
+        // reintentar en silencio lo arregla — hasta ahora la única forma de
+        // salir de ese estado era que la persona cerrara sesión
+        // manualmente. Para no depender de eso, limpiamos el caché LOCAL de
+        // MSAL de esta cuenta (esto NO cierra la sesión real de Microsoft
+        // 365 en el servidor — `clearCache` no hace ninguna llamada de red,
+        // solo borra lo guardado en este navegador para esta app — así no
+        // afecta la sesión de "Inspección Pulmonar", que comparte el mismo
+        // registro de Entra ID) y disparamos un login interactivo nuevo de
+        // inmediato, en vez de dejar a la persona en un mensaje sin salida.
+        try {
+          await instance.clearCache({ account });
+        } catch {
+          // Si ni siquiera se puede limpiar el caché local, igual conviene
+          // forzar el login nuevo a continuación en vez de quedarse en un
+          // error sin salida.
+        }
+        await instance.loginRedirect(graphLoginRequest);
+        // loginRedirect navega fuera de la app; esto nunca debería
+        // resolverse (igual que el caso de "no hay cuenta" más arriba).
+        throw new Error('Tu sesión de Microsoft quedó en un estado inconsistente. Iniciando sesión de nuevo…');
       }
     }
   }

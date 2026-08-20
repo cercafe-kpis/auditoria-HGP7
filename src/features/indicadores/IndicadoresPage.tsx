@@ -63,6 +63,7 @@ export function IndicadoresPage() {
   const [auditorias, setAuditorias] = useState<AuditoriaRemota[]>([]);
   const [inclinaciones, setInclinaciones] = useState<InclinacionRemota[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [exportando, setExportando] = useState(false);
   const [errorExportando, setErrorExportando] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState('');
@@ -77,6 +78,7 @@ export function IndicadoresPage() {
     async function cargar() {
       if (!navigator.onLine) return;
       setCargando(true);
+      setErrorCarga(null);
       try {
         const token = await getAccessToken();
         const [datosAuditorias, datosInclinaciones] = await Promise.all([
@@ -95,6 +97,13 @@ export function IndicadoresPage() {
           setAuditorias(datosAuditorias);
           setInclinaciones(datosInclinaciones);
         }
+      } catch (e) {
+        // Antes de este cambio, un fallo aquí (por ejemplo, no poder
+        // confirmar la sesión de Microsoft) se tragaba en silencio: los
+        // KPI se quedaban todos en 0 sin ninguna pista de que algo había
+        // fallado — solo el cuadro de observaciones (más abajo) mostraba
+        // el error técnico, lo cual era confuso.
+        if (!cancelado) setErrorCarga(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelado) setCargando(false);
       }
@@ -313,6 +322,12 @@ export function IndicadoresPage() {
       </div>
 
       {cargando && <p className="text-slate-500 mb-4">Cargando…</p>}
+
+      {errorCarga && (
+        <div className="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm">
+          No se pudieron cargar los indicadores: {errorCarga}
+        </div>
+      )}
 
       {/* Todo lo que hay dentro de este div es exactamente lo que se
           exporta a PDF (ver exportarPDF) — por eso lleva su propio

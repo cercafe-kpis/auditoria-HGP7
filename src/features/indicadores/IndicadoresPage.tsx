@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import {
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import { useAuthToken } from '../../auth/useAuthToken';
@@ -18,6 +30,19 @@ function primerDiaDelMes(): string {
 function formatearCantidadYPorcentaje(cantidad: number, total: number): string {
   const porcentaje = total === 0 ? 0 : Math.round((cantidad / total) * 100);
   return `${cantidad} (${porcentaje}%)`;
+}
+
+/**
+ * "20 ago" — etiqueta corta para el eje X de la evolución diaria.
+ * `fechaISO` llega como "YYYY-MM-DD" (ver porDia). Ojo: construir la fecha
+ * con `new Date(fechaISO)` la interpretaría como medianoche UTC, y al
+ * convertir de vuelta a la hora local (Bogotá, UTC-5) el día mostrado
+ * quedaría un día atrás — por eso se arman año/mes/día como fecha LOCAL en
+ * vez de parsear el string ISO directamente.
+ */
+function formatearFechaCorta(fechaISO: string): string {
+  const [anio, mes, dia] = fechaISO.split('-').map(Number);
+  return new Date(anio, mes - 1, dia).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
 }
 
 const COLOR_CLASIFICACION: Record<string, string> = {
@@ -169,6 +194,35 @@ export function IndicadoresPage() {
     for (const a of auditorias) conteo[a.clasificacion] = (conteo[a.clasificacion] ?? 0) + 1;
     return Object.entries(conteo).map(([clasificacion, total]) => ({ clasificacion, total }));
   }, [auditorias]);
+
+  // Evolución diaria del % de canales clasificados "Bueno" (no el
+  // acumulado del rango como porClasificacion, sino un punto por cada día
+  // que tuvo auditorías) — para ver tendencia, no solo el total. Días sin
+  // ninguna auditoría en el rango simplemente no generan punto (no se
+  // rellenan con 0%, que se leería como "mal día" en vez de "sin datos").
+  const porDia = useMemo(() => {
+    const mapa = new Map<string, { total: number; buenos: number }>();
+    for (const a of auditorias) {
+      const fecha = a.fechaAuditoria.slice(0, 10);
+      if (!mapa.has(fecha)) mapa.set(fecha, { total: 0, buenos: 0 });
+      const fila = mapa.get(fecha)!;
+      fila.total += 1;
+      if (a.clasificacion === 'Bueno') fila.buenos += 1;
+    }
+    return Array.from(mapa.entries())
+      .map(([fecha, datos]) => ({
+        fecha,
+        total: datos.total,
+        buenos: datos.buenos,
+        porcentaje: Math.round((datos.buenos / datos.total) * 100),
+      }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [auditorias]);
+
+  // Con muchos días en el rango, mostrar una etiqueta por punto en el eje X
+  // las amontona hasta volverlas ilegibles (más aún en celular) — a partir
+  // de ~12 días se muestra solo 1 de cada N para dejar aire.
+  const intervaloEjeXPorDia = porDia.length > 12 ? Math.ceil(porDia.length / 8) - 1 : 0;
 
   const porcentajeGrasosa = useMemo(() => {
     if (auditorias.length === 0) return 0;
@@ -394,6 +448,78 @@ export function IndicadoresPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Evolución diaria del % Bueno — un único trazo (no lleva leyenda:
+            el título ya dice qué mide) para ver la tendencia día a día
+            dentro del rango filtrado, justo debajo del acumulado de arriba
+            (que solo da el total, no la tendencia). El punto final lleva su
+            valor escrito al lado (igual que las demás gráficas del informe,
+            ver docstring del componente) porque el PDF exportado es una
+            foto estática y ahí no hay manera de "pasar el mouse".
+            isAnimationActive={false}: por default Recharts anima el trazo
+            dibujándose progresivamente (~1.5s) — se comprobó en pruebas que
+            si el usuario exporta a PDF (html2canvas, una foto instantánea
+            del DOM) antes de que esa animación termine, el PDF captura la
+            línea a medio dibujar con el último punto suelto, sin conectar.
+            Desactivar la animación evita ese riesgo por completo. */}
+        <p className="text-sm font-semibold text-slate-600 mb-2">Evolución diaria — % Bueno</p>
+        {porDia.length === 0 ? (
+          <p className="text-sm text-slate-400 mb-10">No hay auditorías registradas en este rango.</p>
+        ) : (
+          <div className="h-64 mb-10">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={porDia} margin={{ top: 16, right: 32, bottom: 8, left: -12 }}>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                <XAxis
+                  dataKey="fecha"
+                  tickFormatter={formatearFechaCorta}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  axisLine={{ stroke: '#e2e8f0' }}
+                  tickLine={false}
+                  interval={intervaloEjeXPorDia}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  tickFormatter={(valor: number) => `${valor}%`}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={36}
+                />
+                <Tooltip
+                  labelFormatter={(fecha) => formatearFechaCorta(fecha as string)}
+                  formatter={(valor, _nombre, item) => [
+                    `${valor}% (${item.payload.buenos} de ${item.payload.total})`,
+                    'Bueno',
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="porcentaje"
+                  stroke={COLOR_CLASIFICACION.Bueno}
+                  strokeWidth={2}
+                  isAnimationActive={false}
+                  dot={{ r: 4, fill: COLOR_CLASIFICACION.Bueno, stroke: '#ffffff', strokeWidth: 2 }}
+                  activeDot={{ r: 6, fill: COLOR_CLASIFICACION.Bueno, stroke: '#ffffff', strokeWidth: 2 }}
+                  label={(props) => {
+                    const { x, y, value, index } = props as {
+                      x?: number;
+                      y?: number;
+                      value?: number;
+                      index?: number;
+                    };
+                    if (index !== porDia.length - 1 || x === undefined || y === undefined) return null;
+                    return (
+                      <text x={x} y={y - 10} textAnchor="middle" fontSize={12} fontWeight={600} fill="#166534">
+                        {value}%
+                      </text>
+                    );
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         )}
 

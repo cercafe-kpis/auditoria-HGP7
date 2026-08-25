@@ -454,23 +454,31 @@ export function IndicadoresPage() {
         {/* Evolución diaria del % Bueno — un único trazo (no lleva leyenda:
             el título ya dice qué mide) para ver la tendencia día a día
             dentro del rango filtrado, justo debajo del acumulado de arriba
-            (que solo da el total, no la tendencia). El punto final lleva su
-            valor escrito al lado (igual que las demás gráficas del informe,
-            ver docstring del componente) porque el PDF exportado es una
-            foto estática y ahí no hay manera de "pasar el mouse".
+            (que solo da el total, no la tendencia). Cada punto lleva su
+            valor escrito al lado (% y cantidad auditada ese día) porque el
+            PDF exportado es una foto estática y ahí no hay manera de "pasar
+            el mouse" — por eso también se deja el eje Y con sus números
+            (aun con las etiquetas puestas, sirve para ubicar los puntos de
+            un vistazo sin tener que leer cada etiqueta una por una).
             isAnimationActive={false}: por default Recharts anima el trazo
             dibujándose progresivamente (~1.5s) — se comprobó en pruebas que
             si el usuario exporta a PDF (html2canvas, una foto instantánea
             del DOM) antes de que esa animación termine, el PDF captura la
             línea a medio dibujar con el último punto suelto, sin conectar.
-            Desactivar la animación evita ese riesgo por completo. */}
+            Desactivar la animación evita ese riesgo por completo.
+            OJO con el margin.left del LineChart: un valor negativo aquí
+            empuja las etiquetas del eje Y fuera del área visible del
+            gráfico y el navegador las recorta por la izquierda (se detectó
+            así: "100%"/"75%"/"50%"/"25%" se veían como "0%"/"5%"/"0%"/"5%"
+            porque solo sobrevivía el extremo derecho del texto) — por eso
+            se usa un margin.left pequeño y positivo, nunca negativo. */}
         <p className="text-sm font-semibold text-slate-600 mb-2">Evolución diaria — % Bueno</p>
         {porDia.length === 0 ? (
           <p className="text-sm text-slate-400 mb-10">No hay auditorías registradas en este rango.</p>
         ) : (
           <div className="h-64 mb-10">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={porDia} margin={{ top: 16, right: 32, bottom: 8, left: -12 }}>
+              <LineChart data={porDia} margin={{ top: 28, right: 32, bottom: 8, left: 4 }}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                 <XAxis
                   dataKey="fecha"
@@ -486,7 +494,7 @@ export function IndicadoresPage() {
                   tick={{ fontSize: 11, fill: '#64748b' }}
                   axisLine={false}
                   tickLine={false}
-                  width={36}
+                  width={38}
                 />
                 <Tooltip
                   labelFormatter={(fecha) => formatearFechaCorta(fecha as string)}
@@ -504,16 +512,34 @@ export function IndicadoresPage() {
                   dot={{ r: 4, fill: COLOR_CLASIFICACION.Bueno, stroke: '#ffffff', strokeWidth: 2 }}
                   activeDot={{ r: 6, fill: COLOR_CLASIFICACION.Bueno, stroke: '#ffffff', strokeWidth: 2 }}
                   label={(props) => {
-                    const { x, y, value, index } = props as {
-                      x?: number;
-                      y?: number;
-                      value?: number;
-                      index?: number;
-                    };
-                    if (index !== porDia.length - 1 || x === undefined || y === undefined) return null;
+                    // Se busca el punto por índice en vez de confiar en
+                    // props.payload (cuya forma exacta no está garantizada
+                    // por los tipos de Recharts) — así siempre se lee
+                    // exactamente el mismo dato que ya tenemos en porDia.
+                    const { x, y, index } = props as { x?: number; y?: number; index?: number };
+                    if (x === undefined || y === undefined || index === undefined) return null;
+                    const punto = porDia[index];
+                    if (!punto) return null;
+                    // El primer y último punto quedan pegados al borde del
+                    // área del gráfico — una etiqueta centrada ahí se monta
+                    // sobre los números del eje Y (el primero) o se corta
+                    // contra el borde derecho (el último). Para esos dos
+                    // casos el texto se ancla hacia adentro en vez de
+                    // centrarse sobre el punto.
+                    const esPrimero = index === 0;
+                    const esUltimo = index === porDia.length - 1;
+                    const anchor = esPrimero ? 'start' : esUltimo ? 'end' : 'middle';
+                    const dx = esPrimero ? 6 : esUltimo ? -6 : 0;
                     return (
-                      <text x={x} y={y - 10} textAnchor="middle" fontSize={12} fontWeight={600} fill="#166534">
-                        {value}%
+                      <text
+                        x={x + dx}
+                        y={y - 8}
+                        textAnchor={anchor}
+                        fontSize={10}
+                        fontWeight={600}
+                        fill="#166534"
+                      >
+                        {punto.porcentaje}% ({punto.buenos}/{punto.total})
                       </text>
                     );
                   }}

@@ -478,7 +478,7 @@ export function IndicadoresPage() {
         ) : (
           <div className="h-64 mb-10">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={porDia} margin={{ top: 28, right: 32, bottom: 8, left: 4 }}>
+              <LineChart data={porDia} margin={{ top: 36, right: 32, bottom: 8, left: 4 }}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                 <XAxis
                   dataKey="fecha"
@@ -530,17 +530,36 @@ export function IndicadoresPage() {
                     const esUltimo = index === porDia.length - 1;
                     const anchor = esPrimero ? 'start' : esUltimo ? 'end' : 'middle';
                     const dx = esPrimero ? 6 : esUltimo ? -6 : 0;
+                    // Dos líneas apiladas (no una sola con el % y la
+                    // cantidad al lado): el % es lo principal y va arriba
+                    // en negrita; la cantidad auditada es un dato de apoyo
+                    // y va debajo, más chico y en un verde más apagado —
+                    // ver marks-and-anatomy: "text wears text tokens", acá
+                    // aplicado como jerarquía entre el valor principal y el
+                    // secundario en vez de dárselos el mismo peso.
                     return (
-                      <text
-                        x={x + dx}
-                        y={y - 8}
-                        textAnchor={anchor}
-                        fontSize={10}
-                        fontWeight={600}
-                        fill="#166534"
-                      >
-                        {punto.porcentaje}% ({punto.buenos}/{punto.total})
-                      </text>
+                      <g>
+                        <text
+                          x={x + dx}
+                          y={y - 18}
+                          textAnchor={anchor}
+                          fontSize={11}
+                          fontWeight={700}
+                          fill="#166534"
+                        >
+                          {punto.porcentaje}%
+                        </text>
+                        <text
+                          x={x + dx}
+                          y={y - 7}
+                          textAnchor={anchor}
+                          fontSize={9}
+                          fontWeight={500}
+                          fill="#4d7c5f"
+                        >
+                          ({punto.buenos}/{punto.total})
+                        </text>
+                      </g>
                     );
                   }}
                 />

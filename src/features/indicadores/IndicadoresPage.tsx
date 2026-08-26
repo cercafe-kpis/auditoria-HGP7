@@ -457,21 +457,25 @@ export function IndicadoresPage() {
             (que solo da el total, no la tendencia). Cada punto lleva su
             valor escrito al lado (% y cantidad auditada ese día) porque el
             PDF exportado es una foto estática y ahí no hay manera de "pasar
-            el mouse" — por eso también se deja el eje Y con sus números
-            (aun con las etiquetas puestas, sirve para ubicar los puntos de
-            un vistazo sin tener que leer cada etiqueta una por una).
+            el mouse". Antes también se mostraban los números del eje Y,
+            pero con cada punto ya etiquetado esos números quedaban
+            redundantes (agosto 2026) — se le quitaron los números, la línea
+            y las marcas de tick al <YAxis />, pero se mantiene con su
+            domain fijo [0, 100] y un width chico (28) por dos motivos: sin
+            el domain fijo Recharts autoescala el
+            eje al mínimo/máximo de los datos del rango, lo que distorsiona
+            la pendiente visual del trazo entre un rango y otro; y sin ese
+            width reservado, la etiqueta del primer punto ("5 de ago" en el
+            eje X) queda pegada al borde izquierdo del contenedor y el
+            navegador la recorta (se comprobó en el sandbox visual antes de
+            aplicar esto). El <CartesianGrid /> horizontal queda como única
+            referencia visual, sin números.
             isAnimationActive={false}: por default Recharts anima el trazo
             dibujándose progresivamente (~1.5s) — se comprobó en pruebas que
             si el usuario exporta a PDF (html2canvas, una foto instantánea
             del DOM) antes de que esa animación termine, el PDF captura la
             línea a medio dibujar con el último punto suelto, sin conectar.
-            Desactivar la animación evita ese riesgo por completo.
-            OJO con el margin.left del LineChart: un valor negativo aquí
-            empuja las etiquetas del eje Y fuera del área visible del
-            gráfico y el navegador las recorta por la izquierda (se detectó
-            así: "100%"/"75%"/"50%"/"25%" se veían como "0%"/"5%"/"0%"/"5%"
-            porque solo sobrevivía el extremo derecho del texto) — por eso
-            se usa un margin.left pequeño y positivo, nunca negativo. */}
+            Desactivar la animación evita ese riesgo por completo. */}
         <p className="text-sm font-semibold text-slate-600 mb-2">Evolución diaria — % Bueno</p>
         {porDia.length === 0 ? (
           <p className="text-sm text-slate-400 mb-10">No hay auditorías registradas en este rango.</p>
@@ -488,14 +492,7 @@ export function IndicadoresPage() {
                   tickLine={false}
                   interval={intervaloEjeXPorDia}
                 />
-                <YAxis
-                  domain={[0, 100]}
-                  tickFormatter={(valor: number) => `${valor}%`}
-                  tick={{ fontSize: 11, fill: '#64748b' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={38}
-                />
+                <YAxis domain={[0, 100]} tick={false} axisLine={false} tickLine={false} width={28} />
                 <Tooltip
                   labelFormatter={(fecha) => formatearFechaCorta(fecha as string)}
                   formatter={(valor, _nombre, item) => [
